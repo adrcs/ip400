@@ -1,0 +1,39 @@
+This repo contains a basic chat application to exercise the nucleo development board. Download the raw file and unzip it to reveal the STM32CubeIDE project. It should
+be ready to go, however a recompilation will prove the integrity of the project structure. This is really early code, it will be improved as time goes on.
+
+To run it, launch a PuTTy session on the first of the two COM ports, set the speed to 115200, and enable the VT100 mode, which can be found under the terminal heading in the categories box.
+
+There are 4 menu items:
+A. List the setup. The station callsign is set to 'NOCALL', to change it text edit setup.c and recompile.
+B. Mesh Status. (Will) dump the mesh table.
+C. Chat mode. Enter chat mode. 
+D. Dump the frame stats, number of tx and rx frames, errors and timeouts.
+X. Exit. (and come back again).
+
+In the chat mode, to send a line of text just key it in and hit enter. Backspace removes one key at time.
+CTRL+R changes the repeat flag. This flag tells a receiving station to repeat the frame. Defaults to setup.
+CTRL+D: sets dump mode. When enabled, the frame header will be dumped instead of interpreted.
+ESC keu (only at the beginning of a line) enables entry of a destination callsign. Defaults to broadcast.
+CTRL+Z. Exits chat mode and returns to the main menu.
+
+The received frames are interepreted as: 
+Originating callsign(source port)>Destination Callsign(dest port)[number of repeats]:text message...
+NOCALL(17)>BROADCAST(1085)[0]:hello to you...
+The number of repeats is the number of times the frame has been repeated.
+
+BUGS
+The beacon mode has not yet been implemented. The code is there to send the frame, the timer needs to
+be setup and counted down.
+The mesh mode is not yet complete. Most of the code is there, it is pending adding beaconing.
+The repeat mode has not yet been implemented.
+There is no text entry or permanent storage method for the setup. You will have to text edit the
+code in setup.c for now. A BIOS-style setup addition using the menu code would be great.
+The frequency and bit rate are hard-coded in main.c, data in the setup struct is currently ignored.
+
+Have Fun.
+If you have any code changes/additions, please e-mail them to me directly so that I can include them,
+please include a paragraph or two on what you did.
+
+73, de VE6VH.
+
+
