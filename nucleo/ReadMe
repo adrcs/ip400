@@ -5,12 +5,15 @@ The current revision is 0.3
 
 To run it, launch a PuTTy session on the first of the two COM ports, set the speed to 115200, and enable the VT100 mode, which can be found under the terminal heading in the categories box.
 
-Release notes, V0.3a
+Release notes, V0.3b
 ====================
 
 Minor change made to the radio parameters display and entry. The frequency is now
 displayed as xxx.yyy and can be entered the same way. The old method of specifying
 it with all the digits is still supported.
+
+Added the ability to set the clock. Format is HH:MM, 24 hours, time zone agnostic.
+Granularity is 10 seconds. Current time added to setup display.
 
 The main menu now has 9 entries:
 A. List the current setup.
@@ -19,6 +22,7 @@ C. Chat mode. Enter chat mode.
 D. Dumps receive frame statistics.
 R. Launches radio parameters menu.
 S. Launches station parameters menu.
+T. Sets the clock.
 W. Writes the setup to internal flash. 
 X. Exit. (and come back again).
 
