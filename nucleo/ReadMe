@@ -1,15 +1,24 @@
 This repo contains a basic chat application to exercise the nucleo development board. Download the raw file and unzip it to reveal the STM32CubeIDE project. It should
-be ready to go, however a recompilation will prove the integrity of the project structure. This is really early code, it will be improved as time goes on.
+be ready to go, however a recompilation will prove the integrity of the project structure. 
+
+The current revision is 0.3
 
 To run it, launch a PuTTy session on the first of the two COM ports, set the speed to 115200, and enable the VT100 mode, which can be found under the terminal heading in the categories box.
 
-There are 4 menu items:
-A. List the setup. The station callsign is set to 'NOCALL', to change it text edit setup.c and recompile.
-B. Mesh Status. (Will) dump the mesh table.
-C. Chat mode. Enter chat mode. 
-D. Dump the frame stats, number of tx and rx frames, errors and timeouts.
+Release notes, V0.3
+===================
+
+The main menu now has 9 entries:
+A. List the current setup.
+B. Mesh Status. Dumps the mesh table.
+C. Chat mode. Enter chat mode.
+D. Dumps receive frame statistics.
+R. Launches radio parameters menu.
+S. Launches station parameters menu.
+W. Writes the setup to internal flash. 
 X. Exit. (and come back again).
 
+Chat mode was not changed, a reminder on how it works:
 In the chat mode, to send a line of text just key it in and hit enter. Backspace removes one key at time.
 CTRL+R changes the repeat flag. This flag tells a receiving station to repeat the frame. Defaults to setup.
 CTRL+D: sets dump mode. When enabled, the frame header will be dumped instead of interpreted.
@@ -21,14 +30,24 @@ Originating callsign(source port)>Destination Callsign(dest port)[number of repe
 NOCALL(17)>BROADCAST(1085)[0]:hello to you...
 The number of repeats is the number of times the frame has been repeated.
 
-BUGS
-The beacon mode has not yet been implemented. The code is there to send the frame, the timer needs to
-be setup and counted down.
-The mesh mode is not yet complete. Most of the code is there, it is pending adding beaconing.
+Beacon frames can be dumped to the console, by enabling __DUMP_BEACON in frame.c. If enabled,
+ensure that the receiving station is in receive mode to avoid running out of heap space.
+
+Limited support has been added for a GPS receiver using the LPUART. It uses the DMA mode
+to receive a message, and parses a GGA message for lat/long and a timestamp. These fields are
+used in the beacon frame. It is enabled by __ENABLE_GPS in beacon.c
+
+BUGS FIXED
+The beacon mode is now fully implemented. See the protocol spec for a description. Frequency is in the 
+station setup, it can be overwritten by enabling __SPEED_DAEMON in beacon.c. 
+The mesh table is built using beacon frames. It lists the callsign, capabilities and last heard time.
+The setup parameters can now be changed and stored in the internal flash.
+
+NEW BUGS
 The repeat mode has not yet been implemented.
-There is no text entry or permanent storage method for the setup. You will have to text edit the
-code in setup.c for now. A BIOS-style setup addition using the menu code would be great.
-The frequency and bit rate are hard-coded in main.c, data in the setup struct is currently ignored.
+A facility to set the clock needs to be added to the main menu.
+The GPS code has yet to be fully tested.
+
 
 Have Fun.
 If you have any code changes/additions, please e-mail them to me directly so that I can include them,
