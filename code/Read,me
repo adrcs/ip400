@@ -1,0 +1,12 @@
+This directory is the new home of the code, starting with release 0.4. There are two directories, platform and IP400. The platform directory contains the CubeIDE project and
+IOC file (everything needed to build the hardware specific code), for different platforms. These directories may not contain the latest code. Copy the contents of the IP400
+directories into the platform directory and then compile.
+
+The current source code is at Rev level 0.4, I have preserved the 0.3b for backwards compatibility, do not copy the new code into a Rev 0.3 platform, it will not compile.
+
+As of this rev, the supported platforms are:
+Nucleo CC2 board.
+Full size Pi HAT with Ebyte E04 module.
+Pi Zero HAT with discrete WL33 radio (400 MHz version only).
+
+Release notes are in the appropriate directory.
