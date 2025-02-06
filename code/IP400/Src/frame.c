@@ -299,10 +299,10 @@ void Frame_Txtask_exec(void)
 		 */
 
 		tFrame = dequeFrame(&txQueue);
+		uint8_t *rawFrame = (uint8_t *)rawTxFrame;
 
 		if(tFrame != NULL)	{
 			frameLen = tFrame->length;
-			uint8_t *rawFrame = (uint8_t *)rawTxFrame;
 
 			/*
 			 * Build the raw frame bytes: see IP400_FRAME struct
@@ -337,7 +337,8 @@ void Frame_Txtask_exec(void)
 			return;				// nothing to send...
 		}
 
-		HAL_MRSubG_PktBasicSetPayloadLength(frameLen);
+		int pktLen = rawFrame - rawTxFrame;
+		HAL_MRSubG_PktBasicSetPayloadLength(frameLen + pktLen);
 
 		// abort the current rx operation
 		if(radioCmd == CMD_RX)	{
