@@ -1,2 +1,5 @@
 Known bugs:
 A chat frame with a zero data field length does not work. Problem seems to be in the receiver or chat processor.
+Fixed in the transmitter not to send a zero length frame. Text length was also off by sizeof(uint16_t) + null char.
+
+No known bugs at this time.
