@@ -206,8 +206,12 @@ BOOL Chat_Task_exec(void)
 					strncpy(dest_call, keyBuffer, cpyLen);
 					destEnt = FALSE;
 				} else {
+					if(keyPos != 0)	{
 					keyBuffer[keyPos++] = '\0';
 					sendLine(keyBuffer, keyPos);
+					} else {
+						USART_Print_string(">>>not sent\r\n");
+					}
 				}
 				keyPos = 0;
 				break;
@@ -238,7 +242,7 @@ BOOL Chat_Task_exec(void)
 // send a line of text
 void sendLine(char *buffer, int len)
 {
-	SendTextFrame(setup_memory.params.setup_data.stnCall, TEXT_TYPE, dest_call, TEXT_TYPE, buffer, len, repeat);
+		SendTextFrame(setup_memory.params.setup_data.stnCall, TEXT_TYPE, dest_call, TEXT_TYPE, buffer, len, repeat);
 }
 
 /*
@@ -280,7 +284,7 @@ void PrintFrame(IP400_FRAME *FrameBytes)
 	USART_Print_string("[%d:%04d]:", FrameBytes->flagfld.flags.hop_count, FrameBytes->seqNum);
 
 	// now dump the data
-	memcpy(printBuf, FrameBytes->buf, dataLen);
+	memcpy(printBuf, FrameBytes->buf, dataLen+3);
 	printBuf[dataLen] = '\0';
 	USART_Print_string("%s\r\n", printBuf);
 

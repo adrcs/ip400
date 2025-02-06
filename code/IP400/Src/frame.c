@@ -242,16 +242,6 @@ void RepeatFrame(IP400_FRAME *frame)
  */
 void QueueTxFrame(IP400_FRAME *txframe)
 {
-	/*
-	FRAME_QUEUE *f;
-	if((f = malloc(sizeof(FRAME_QUEUE))) == NULL)
-		return;
-
-	// set the frame buffer and sequence number
-	f->frame = txframe;
-
-	insque((QUEUE_ELEM *)f, (QUEUE_ELEM *)txQueue.q_back);
-	*/
 	enqueFrame(&txQueue, txframe);
 }
 
@@ -283,20 +273,6 @@ void Frame_Txtask_exec(void)
 
 	// idle: waiting for work
 	case TX_IDLE:
-
-		/*
-		// wait for a frame to send
-		if(txQueue.q_back == &txQueue)
-			return;
-
-		// get a frane from the top of the queue
-		FRAME_QUEUE *f = txQueue.q_forw;
-		remque((struct qelem *)f);
-
-		// this would be better as a union..
-		int frameLen = f->length;
-		tFrame = f->frame;
-		 */
 
 		tFrame = dequeFrame(&txQueue);
 		uint8_t *rawFrame = (uint8_t *)rawTxFrame;
