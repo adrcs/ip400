@@ -5,4 +5,4 @@ and the source directory contains code that is common to all.
 
 The current revision level is 0.4.
 
-See the release notes in the specific directory.
+See the release notes in the documentation.
