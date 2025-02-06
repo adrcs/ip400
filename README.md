@@ -1,12 +1,8 @@
-Welcome to the IP400 project. This repository has the current code for the project that has been tested. For comments, please visit the forum
-on groups.io/ip400.
+Welcome to the IP400 project. 
 
-Coming soon
-Chat application for the nucleo evaluation board. Still debugging, should
-be done in a dqy or two. Please check back.
+The directories here have been restructured. The code directory contains the hardware abstraction for several platforms, 
+and the source directory contains code that is common to all.
 
-In the works
-Port of the chat application to the Raspberry Pi HAT board. 2-3 weeks away.
-PI application to send other frame types.
+The current revision level is 0.4.
 
-73, de VE6VH
+See the release notes in the specific directory.
