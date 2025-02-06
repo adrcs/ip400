@@ -1,0 +1,2 @@
+Known bugs:
+A chat frame with a zero data field length does not work. Problem seems to be in the receiver or chat processor.
