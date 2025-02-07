@@ -29,6 +29,7 @@
 #include "usart.h"
 
 #define	__USE_SETUP_PARAMS	1				// set to 1 to use setup parameters
+#define	US					0				// station is in the US
 
 // defined elsewhere
 extern char *modTypes[];

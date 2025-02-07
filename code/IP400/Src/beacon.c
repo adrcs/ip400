@@ -33,26 +33,41 @@
 #include <FreeRTOS.h>
 #include <stm32wl3x_hal.h>
 
+#include "config.h"
 #include "frame.h"
 #include "tasks.h"
 #include "setup.h"
 #include "utils.h"
 #include "tod.h"
+#include "usart.h"
 
 // config
-#define	__ENABLE_GPS	0				// set to 1 if you have GPS attached
 #define	__SPEED_DAEMON	0				// send beacon every 5 seconds for testing purposes
 
 // local defines
-#define	MAX_BEACON		80
-#define	GPS_FIX_LEN		20				// gps fix length
+#define	MAX_BEACON			80			// max beacon string
+#define	GPS_FIX_LEN			20			// gps fix length
+#define	GPS_BFR_SIZE		140			// GPS buffer size
+
 // NMEA GGA Sentence fields
-#define	GGA_TAG			0				// message tag
-#define	GGA_TIMESTAMP	1				// time of fix
-#define	GGA_LATITUDE	2				// latitude
-#define	GGA_NS_HEMI		3				// latitude hemisphere
-#define	GGA_LONGITUDE	4				// longitude
-#define	GGA_EW_HEMI		5				// longitude hemisphere
+char *nmeaMsgTag = "RMC";				// sentence we are processing
+enum {
+	NMEA_TAG=0,			// message tag
+	NMEA_TIMESTAMP,		// time of fix'
+	NMEA_STATUS,		// status
+	NMEA_LATITUDE,		// latitude
+	NMEA_NS_HEMI,		// latitude hemisphere
+	NMEA_LONGITUDE,		// longitude
+	NMEA_EW_HEMI,		// longitude hemisphere
+	NMEA_MIN_FLDS		// minimum fields in GPS message
+};
+
+// NMEA processing states
+enum {
+	NMEA_STATE_SOM=0,	// start of message
+	NMEA_STATE_MSG,		// in the message
+};
+
 // hemispheres
 enum {
 	N_HEMI=0,		// North
@@ -68,27 +83,34 @@ uint8_t hemispheres[N_HEMIS] = {
 
 uint32_t	timerInitValue;			// value to initialize timer
 uint32_t	timerCtrValue;			// current counter
-
 BEACON_HEADER	beacon_hdr;			// beacon header
 uint8_t		bcnPayload[MAX_BEACON];	// beacon payload
-
 BOOL gpsMessageRx = FALSE;
+BOOL GPSBusy=FALSE;
+TIMEOFDAY wallClockTime;
 
 #if __ENABLE_GPS
-#define	GPS_BUFFER_SIZE		200
-// LPUART for GPS receiver
-extern hlpuart1 UART_HandleTypeDef;	// HAL Handle to LPUART
-uint8_t GPSMsgBuf[GPS_BUFFER_SIZE];
+// data for GPS
+uint8_t GPSMsgBuf[GPS_BFR_SIZE];
+uint8_t GPSEchoBuf[GPS_BFR_SIZE];
+uint8_t GPSProcBuf[GPS_BFR_SIZE];
+uint8_t *GPSBufPtr;
+uint8_t GPSMsgSize;
+uint8_t NMEAState;
+//
+BOOL haveGPSFix = FALSE;
+BOOL gpsEchoReady=FALSE;
+//
 char GPSLat[GPS_FIX_LEN];
 char GPSLong[GPS_FIX_LEN];
 char GPSFixTime[GPS_FIX_LEN];
-BOOL haveGPSFix = FALSE;
-char *gpsFlds[GPS_FIX_LEN];
-#else
-TIMEOFDAY wallClockTime;
+char *gpsFlds[GPS_BFR_SIZE];
+
+// fwd Refs in this module in GPS mode
+BOOL processGPSMessage(uint8_t *GPSMsgBuf, uint8_t bufferSize);
 #endif
 
-// fwd refs here..
+//fwd refs w/o GPS
 void GPSFormat(char *buffer, double value, uint8_t hePos, uint8_t heNeg);
 
 // initialization: calculate the init value in
@@ -107,9 +129,12 @@ void Beacon_Task_init(void)
 
 	// GPS Init
 #if __ENABLE_GPS
-    HAL_LPUART_Receive_DMA(&hlpuart1, (uint8_t*)GPSMsgBuf, GPS_BUFFER_SIZE);
     gpsMessageRx = FALSE;
     haveGPSFix = FALSE;
+    gpsEchoReady = FALSE;
+    GPSBufPtr = GPSMsgBuf;
+    GPSBusy = FALSE;
+    NMEAState=NMEA_STATE_SOM;
 #endif
 
 }
@@ -119,9 +144,11 @@ void Beacon_Task_exec(void)
 {
 #if __ENABLE_GPS
 	if(gpsMessageRx)	{
-	    gpsMessageRx = FALSE;
-	    ifprocessGPSMessage(GPSMsgBuf, GPS_BUFFER_SIZE))
+		// process the message
+		if(processGPSMessage(GPSProcBuf, (uint8_t)strlen((char *)GPSProcBuf)))	{
 			haveGPSFix = TRUE;
+	    }
+        gpsMessageRx = FALSE;
 	}
 #endif
 
@@ -148,10 +175,13 @@ void Beacon_Task_exec(void)
 	if(haveGPSFix)		{
 		strcpy(pPayload, "GPS,");
 		strcat(pPayload, GPSLat);
+		strcat(pPayload, ",");
 		strcat(pPayload, GPSLong);
+		strcat(pPayload, ",");
 		strcat(pPayload, GPSFixTime);
+		strcat(pPayload, ",");
 	} else {
-#else
+#endif
 	// setup struct generated payload
 	strcpy(pPayload, "FXD,");
 	pPayload += strlen(pPayload);
@@ -161,7 +191,10 @@ void Beacon_Task_exec(void)
 	pPayload += strlen(pPayload);
 	double dlong = ascii2double(setup_memory.params.setup_data.longitude);
 	GPSFormat(pPayload, dlong, E_HEMI, W_HEMI);
-	strcat(pPayload, ",");
+	strcat(pPayload, ",,");
+#if __ENABLE_GPS
+	}
+#endif
 	pPayload += strlen(pPayload);
 
 	// Use RTC for time
@@ -171,7 +204,6 @@ void Beacon_Task_exec(void)
 
 	// home grid square
 	strcat(pPayload, setup_memory.params.setup_data.gridSq);
-#endif
 
 	// firmware version
 	int pos = strlen((char *)p2);
@@ -206,39 +238,93 @@ void GPSFormat(char *buffer, double value, uint8_t hePos, uint8_t heNeg)
 	sprintf(buffer, "%d%02d.%05d%c", whole, min, ifract, hemispheres[hemi]);
 }
 
+
+
+/*
+ * Process GPS data from LPUART: runs at a higher priority
+ */
+void GPS_Task_exec(void)
+{
+#if __ENABLE_GPS
+	char c;
+	int nBytesinBuff;
+
+	if((nBytesinBuff=gpsbuffer_bytesInBuffer()) == 0)
+		return;
+
+	for(int i=0;i<nBytesinBuff;i++)		{
+		c = (char)gpsbuffer_get(0);
+
+		switch(NMEAState)	{
+
+		// waiting for a start of message
+		case NMEA_STATE_SOM:
+			if(c != '$')
+				break;
+			GPSBufPtr = GPSMsgBuf;
+			NMEAState=NMEA_STATE_MSG;
+			break;
+
+		// collecting chars in a message
+		case NMEA_STATE_MSG:
+			*GPSBufPtr++ = c;
+			GPSMsgSize = GPSBufPtr - GPSMsgBuf;
+			if((c == '*') || (GPSMsgSize >= GPS_BFR_SIZE)) {
+				*GPSBufPtr = '\0';
+				GPSMsgSize++;
+				memcpy(GPSEchoBuf, GPSMsgBuf, GPSMsgSize);
+				gpsMessageRx = TRUE;
+				memcpy(GPSProcBuf, GPSMsgBuf, GPSMsgSize);
+				memcpy(GPSEchoBuf, GPSMsgBuf, GPSMsgSize);
+				gpsEchoReady = TRUE;
+				NMEAState=NMEA_STATE_SOM;
+			}
+			break;
+		}
+	}
+#else
+		return;				// unused code
+#endif
+}
+
 #if __ENABLE_GPS
 /*
  * Process an inbound GPS message
  */
-BOOL processGPSMessage(GPSMsgBuf, GPS_BUFFER_SIZE)
+BOOL processGPSMessage(uint8_t *GPSdata, uint8_t bufferSize)
 {
-	int limit = (int)strlen(GPSMsgBuf);
-	nParams = explode_string(GPSMsgBuf, gpsFlds, limit, ',', '"');
-	if (nParams == 0)
+	char *msg = (char *)GPSdata;
+	uint8_t nParams = explode_string(msg, gpsFlds, bufferSize, ',', '"');
+	if ((nParams == 0) || (nParams < NMEA_MIN_FLDS))
 		return FALSE;
 
-	//brute force position fix
-	if(strcmp(gpsFlds[GGA_TAG[strlen(GGA_TAG)-strlen("GGA")]],"GGA"))
+	//	brute force position fix
+	// check for message with GGA at the end
+	char *gpsTag = gpsFlds[NMEA_TAG];
+	gpsTag += strlen(gpsTag)-strlen(nmeaMsgTag);
+	if(strcmp(gpsTag, nmeaMsgTag))
 		return FALSE;
 
-	strpy(GPSFixTime, gpsFlds[GGA_TIMESTAMP]);
+	strcpy(GPSFixTime, gpsFlds[NMEA_TIMESTAMP]);
 
-	strcpy(GPSLat, gpsFlds[GGA_LATITUDE]);
-	strcat(GPSLat, gpsFlds[GGA_NS_HEMI]);
+	strcpy(GPSLat, gpsFlds[NMEA_LATITUDE]);
+	strcat(GPSLat, gpsFlds[NMEA_NS_HEMI]);
 
-	strcpy(GPSLong, gpsFlds[GGA_LONGITUDE]);
-	strcat(GPSLong, gpsFlds[GGA_EW_HEMI]);
+	strcpy(GPSLong, gpsFlds[NMEA_LONGITUDE]);
+	strcat(GPSLong, gpsFlds[NMEA_EW_HEMI]);
 
 	return TRUE;
 }
 
 /*
- * callback from GPS receiver when rx is complete
+ * echo the last GPS message on the console
  */
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+void GPSEcho(void)
 {
-    HAL_LPUART_Receive_DMA(&hlpuart1, (uint8_t*)GPSMsgBuf, GPS_BUFFER_SIZE);
-    gpsMessageRx = TRUE;
-	return;
+	if(!gpsEchoReady)
+		return;
+
+	USART_Print_string("%s\r\n", (char *)GPSEchoBuf);
+	gpsEchoReady=FALSE;
 }
 #endif

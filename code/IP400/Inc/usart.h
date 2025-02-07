@@ -33,13 +33,15 @@ typedef uint16_t		BUFFER_SIZE_T;		// buffer size type
 typedef uint8_t			DATA_ELEMENT;		// buffer data element
 
 // uart HAL handle
-extern UART_HandleTypeDef huart1;
+extern UART_HandleTypeDef huart1;			// console UART
+extern UART_HandleTypeDef hlpuart1 ;		// GPS UART
 
 // logger defines
 #define	LOG_NOTICE		0			// notice
 #define LOG_ERROR		1			// error
 #define	LOG_SEVERE		2			// severe error
 
+// logger
 void logger(int severity, char *format, ...);
 
 // API calls
@@ -50,5 +52,10 @@ BOOL databuffer_contains(const char *tag, UART_TIMEOUT_T rx_timeout, BOOL saveDa
 BOOL USART_Send_String(const char *string, size_t len);
 BOOL USART_Send_Char(const char c);
 void USART_Print_string(char *format, ...);
+
+// same as USART but for LPUART: no Tx functions
+void LPUART_RxBuffer_reset(void);
+size_t gpsbuffer_bytesInBuffer(void);
+DATA_ELEMENT gpsbuffer_get(UART_TIMEOUT_T timeout);
 
 #endif /* INC_USART_H_ */

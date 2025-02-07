@@ -28,6 +28,7 @@
 #include "tasks.h"
 #include "utils.h"
 #include "tod.h"
+#include "config.h"
 
 // menu state
 uint8_t menuState;		// menu state
@@ -97,6 +98,7 @@ void Print_Frame_stats(FRAME_STATS *stats);
 void Print_Radio_errors(uint32_t errs);
 void Print_FSM_state(uint8_t state);
 uint8_t getEntry(int activeMenu, int item);
+uint8_t getKeyEntry(void);
 
 // list of menus
 enum	{
@@ -212,6 +214,13 @@ uint8_t setParam(void)
 {
 	return(getEntry(activeMenu, sel_item));
 }
+#if __ENABLE_GPS
+uint8_t gpsEcho(void)
+{
+	GPSEcho();
+	return(getKeyEntry());
+}
+#endif
 
 /*
  * main menu definition
@@ -226,12 +235,20 @@ struct menuItems_t {
 };
 
 // main menu
+#if __ENABLE_GPS
+#define N_MAINMENU	11			// additional menu item for GPS
+#else
 #define N_MAINMENU	10			// number of lines in the menu
+#endif
+
 struct menuItems_t mainMenu[N_MAINMENU] = {
 		{ "List setup parameters\r\n", 'A', printAllSetup },
 		{ "Mesh Status\r\n", 'B', listMesh },
 		{ "Chat Mode\r\n", 'C', chatMode },
 		{ "Dump Frame stats\r\n", 'D', showstats },
+#if __ENABLE_GPS
+		{ "GPS Echo mode\r\n", 'G', gpsEcho },
+#endif
 		{ "LED test\r\n", 'L', ledTest },
 		{ "Set Radio Parameters\r\n", 'R', setRadio },
 		{ "Set Station Parameters\r\n", 'S', setStation },

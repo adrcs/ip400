@@ -96,7 +96,13 @@ STN_PARAMS *GetStationParams(void)			// get the station params
 // returns true if callsigns match
 BOOL CompareToMyCall(char *call)
 {
-	if(!strncmp(call, setup_memory.params.setup_data.stnCall, MAX_CALL))
+	char expCall[20];
+
+	// make sure call sign is padded out to 6 characters b4 comparison
+	strcpy(expCall, setup_memory.params.setup_data.stnCall);
+	strcat(expCall, "      ");
+
+	if(!strncmp(call, expCall, MAX_CALL))
 		return TRUE;
 	return FALSE;
 }

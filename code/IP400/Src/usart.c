@@ -29,6 +29,7 @@
 #include <FreeRTOS.h>
 #include <semphr.h>
 
+#include "config.h"
 #include "stream_buffer.h"
 #include "types.h"
 #include "streambuffer.h"
@@ -46,32 +47,58 @@ StaticStreamBuffer_t   	USART_StreamBuffer;
 SemaphoreHandle_t 	txCompleted;		// tx completed semaphore
 static DATA_ELEMENT USARTRxChar[10];	// last received character
 
-uint8_t buffer_data[bufferSIZE];
+uint8_t usart_data[bufferSIZE];
 char usartPrintBuffer[200];
 
 // fwd refs here...
 void USART_Receive_char(void);
+
+#if __ENABLE_GPS
+#define	LPUART_DMA_SIZE			32
+static DATA_ELEMENT LPUARTRxChar[LPUART_DMA_SIZE];
+
+void LPUART_Receive_char(void);
+
+StreamBufferHandle_t	LPUART_RxBuffer;			// handle to buffer
+StaticStreamBuffer_t   	LPUART_StreamBuffer;
+uint8_t gps_data[bufferSIZE];
+#endif
 
 /*
  * API for the rx data buffer
  */
 void USART_API_init(void)
 {
-	USART_RxBuffer = xStreamBufferCreateStatic(bufferSIZE, 1, buffer_data, &USART_StreamBuffer);
-	USART_RxBuffer_reset();
-
 	// create the tx completed semaphore
     txCompleted = xSemaphoreCreateBinary();
 
-    // start the rx process
+    // start USART
+	USART_RxBuffer = xStreamBufferCreateStatic(bufferSIZE, 1, usart_data, &USART_StreamBuffer);
+	USART_RxBuffer_reset();
     USART_Receive_char();
+
+#if __ENABLE_GPS
+	LPUART_RxBuffer = xStreamBufferCreateStatic(bufferSIZE, 1, gps_data, &LPUART_StreamBuffer);
+	LPUART_RxBuffer_reset();
+    LPUART_Receive_char();
+#endif
 }
 
+// reset the data buffer
 void USART_RxBuffer_reset(void)
 {
 	xStreamBufferReset(USART_RxBuffer);
 	return;
 }
+
+#if __ENABLE_GPS
+// reset the LPUART Buffer
+void LPUART_RxBuffer_reset(void)
+{
+	xStreamBufferReset(LPUART_RxBuffer);
+	return;
+}
+#endif
 
 // return the number of byte in the buffer
 size_t databuffer_bytesInBuffer(void)
@@ -98,6 +125,35 @@ DATA_ELEMENT databuffer_get(UART_TIMEOUT_T timeout)
 
 	return retval;
 }
+
+/*
+ * Similar but from GPS buffer
+ */
+#if __ENABLE_GPS
+// return the number of byte in the buffer
+size_t gpsbuffer_bytesInBuffer(void)
+{
+	size_t nBytes = xStreamBufferBytesAvailable(LPUART_RxBuffer);
+	return nBytes;
+}
+// get a bytes
+DATA_ELEMENT gpsbuffer_get(UART_TIMEOUT_T timeout)
+{
+	DATA_ELEMENT retval;
+
+	TickType_t tickTimeout;
+
+	if(timeout == 0)
+		tickTimeout = portMAX_DELAY;
+	else
+		tickTimeout = pdMS_TO_TICKS(timeout);
+
+	if(xStreamBufferReceive(LPUART_RxBuffer, &retval, 1, tickTimeout) == 0)
+		return BUFFER_NO_DATA;
+
+	return retval;
+}
+#endif
 
 // see if the buffer contains a keyword, save data up to it if needed
 BOOL databuffer_contains(const char *tag, UART_TIMEOUT_T rx_timeout, BOOL saveData, char *SaveBuffer)
@@ -193,13 +249,40 @@ void USART_Receive_char(void)
 	HAL_UART_Receive_IT(&huart1,(uint8_t *)USARTRxChar,1);
 }
 
+
 // callback function when rx is completed: overrides previous
 // __weak definition
+// NB: Console USART and GPS LPUART share the same HAL routine
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-
-	// do not store any control chars
+#if __ENABLE_GPS
+	// service the LPUART
+	if(huart->Instance == LPUART1)	{
+		xStreamBufferSendFromISR(LPUART_RxBuffer, LPUARTRxChar, 1, NULL);
+		HAL_UART_Receive_IT(&hlpuart1,(uint8_t *)LPUARTRxChar,1);
+		return;
+	}
+#endif
+	// service the USART
 	xStreamBufferSendFromISR(USART_RxBuffer, USARTRxChar, 1, NULL);
 	HAL_UART_Receive_IT(&huart1,(uint8_t *)USARTRxChar,1);
 }
 
+#if __ENABLE_GPS
+// receive a byte with DMA, wait for DMA completed interrupt
+void LPUART_Receive_char(void)
+{
+	HAL_UART_Receive_IT(&hlpuart1,(uint8_t *)LPUARTRxChar,1);
+	// HAL_UARTEx_ReceiveToIdle_DMA(&hlpuart1,(uint8_t *)LPUARTRxChar,LPUART_DMA_SIZE);
+	//__HAL_DMA_DISABLE_IT(&hlpuart1, DMA_IT_HT);
+}
+
+
+// callback from GPS Rx
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
+{
+	xStreamBufferSendFromISR(LPUART_RxBuffer, LPUARTRxChar, Size, NULL);
+	HAL_UARTEx_ReceiveToIdle_DMA(&hlpuart1,(uint8_t *)LPUARTRxChar,LPUART_DMA_SIZE);
+}
+
+#endif

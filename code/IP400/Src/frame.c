@@ -34,7 +34,6 @@
 #include <stm32wl3x_nucleo.h>
 #endif
 
-
 #include <cmsis_os2.h>
 #include <FreeRTOS.h>
 #include <semphr.h>
@@ -429,7 +428,7 @@ void Frame_Rxtask_exec(void)
 		case ICMP_TYPE:
 			Mesh_ProcessBeacon((void *)&rFrame, Stats.lastRSSI);
 #if __DUMP_BEACON
-			EnqueChatFrame((void *)&rFrame, length);
+			EnqueChatFrame((void *)&rFrame, length+3);
 #endif
 			Stats.nBeacons++;
 			break;
