@@ -212,7 +212,7 @@ void Beacon_Task_exec(void)
 	buf[pos++] = '\0';			// null terminated
 
 	// time to send a beacon frame..
-	SendBeaconFrame(setup_memory.params.setup_data.stnCall, bcnPayload, pos);
+	SendBeaconFrame(setup_memory.params.setup_data.stnCall, bcnPayload, pos+1);
 }
 
 /*

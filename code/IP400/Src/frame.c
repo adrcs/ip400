@@ -276,43 +276,44 @@ void Frame_Txtask_exec(void)
 		tFrame = dequeFrame(&txQueue);
 		uint8_t *rawFrame = (uint8_t *)rawTxFrame;
 
-		if(tFrame != NULL)	{
-			frameLen = tFrame->length;
+		if(tFrame == NULL)
+			return;
 
-			/*
-			 * Build the raw frame bytes: see IP400_FRAME struct
-			 */
-			// Source call + port (6 bytes)
-			memcpy(rawFrame, (uint8_t *)&tFrame->source, IP_400_CALL_SIZE);
-			rawFrame += IP_400_CALL_SIZE;
-			// Dest call + port (6 bytes)
-			memcpy(rawFrame, (uint8_t *)&tFrame->dest, IP_400_CALL_SIZE);
-			rawFrame += IP_400_CALL_SIZE;
-			// flag byte (2 byte)
-			memcpy(rawFrame, (uint8_t *)&tFrame->flagfld, IP_400_FLAG_SIZE);
-			rawFrame += IP_400_FLAG_SIZE;
-			// frame sequence number (4 bytes)
-			memcpy(rawFrame, (uint32_t *)&tFrame->seqNum, sizeof(uint32_t));
-			rawFrame += sizeof(uint32_t);
-			// frame length (2 bytes)
-			memcpy(rawFrame, (uint8_t *)&tFrame->length, sizeof(uint16_t));
-			rawFrame += IP_400_LEN_SIZE;
+		frameLen = tFrame->length;
 
-			// and now the data...
-			if((tFrame->buf != NULL) && (tFrame->length != 0))
-				memcpy(rawFrame, tFrame->buf, tFrame->length);
-		}
+		/*
+		 * Build the raw frame bytes: see IP400_FRAME struct
+		 */
+		// Source call + port (6 bytes)
+		memcpy(rawFrame, (uint8_t *)&tFrame->source, IP_400_CALL_SIZE);
+		rawFrame += IP_400_CALL_SIZE;
+		// Dest call + port (6 bytes)
+		memcpy(rawFrame, (uint8_t *)&tFrame->dest, IP_400_CALL_SIZE);
+		rawFrame += IP_400_CALL_SIZE;
+		// flag byte (2 byte)
+		memcpy(rawFrame, (uint8_t *)&tFrame->flagfld, IP_400_FLAG_SIZE);
+		rawFrame += IP_400_FLAG_SIZE;
+		// frame sequence number (4 bytes)
+		memcpy(rawFrame, (uint32_t *)&tFrame->seqNum, sizeof(uint32_t));
+		rawFrame += sizeof(uint32_t);
+		// frame length (2 bytes)
+		memcpy(rawFrame, (uint8_t *)&tFrame->length, sizeof(uint16_t));
+		rawFrame += IP_400_LEN_SIZE;
+
+		// and now the data...
+		if((tFrame->buf != NULL) && (tFrame->length != 0))
+			memcpy(rawFrame, tFrame->buf, tFrame->length);
 
 		// free the allocations in the reverse order...
-		if(tFrame != NULL)	{
-			if(tFrame->buf != NULL)
-				free(tFrame->buf);
-			free(tFrame);
-		} else {
-			return;				// nothing to send...
-		}
+		if(tFrame->buf != NULL)
+			free(tFrame->buf);
 
-		int pktLen = rawFrame - rawTxFrame;
+		free(tFrame);
+
+		// ensure packet length is a multiple of 4 bytes
+		int pktLen = (rawFrame - rawTxFrame) + frameLen;
+		pktLen += (pktLen % 4);
+
 		HAL_MRSubG_PktBasicSetPayloadLength(frameLen + pktLen);
 
 		// abort the current rx operation
@@ -408,9 +409,6 @@ void Frame_Rxtask_exec(void)
 
 	rFrame.buf = RxRaw;
 
-	// only interested in the 'to' port at this point...
-	uint32_t length = __HAL_MRSUBG_GET_DATABUFFER_SIZE();
-
 	// find a reason to reject a frame...
 	BOOL isMine, isUniqueFrame;
 	isMine = FrameisMine(&rFrame);
@@ -428,13 +426,13 @@ void Frame_Rxtask_exec(void)
 		case ICMP_TYPE:
 			Mesh_ProcessBeacon((void *)&rFrame, Stats.lastRSSI);
 #if __DUMP_BEACON
-			EnqueChatFrame((void *)&rFrame, length+3);
+			EnqueChatFrame((void *)&rFrame);
 #endif
 			Stats.nBeacons++;
 			break;
 
 		case TEXT_TYPE:
-			EnqueChatFrame((void *)&rFrame, length);
+			EnqueChatFrame((void *)&rFrame);
 			Stats.framesOK++;
 			break;
 

@@ -102,7 +102,7 @@ void Chat_Task_welcome(void)
  * place a frame on the queue frame content is copied
  * to alloc'd memory
  */
-BOOL EnqueChatFrame(void *raw, int length)
+BOOL EnqueChatFrame(void *raw)
 {
 	IP400_FRAME *qFrame, *SrcFrame = (IP400_FRAME *)raw;
 	uint8_t *frameBuffer;
@@ -284,7 +284,7 @@ void PrintFrame(IP400_FRAME *FrameBytes)
 	USART_Print_string("[%d:%04d]:", FrameBytes->flagfld.flags.hop_count, FrameBytes->seqNum);
 
 	// now dump the data
-	memcpy(printBuf, FrameBytes->buf, dataLen+3);
+	memcpy(printBuf, FrameBytes->buf, dataLen);
 	printBuf[dataLen] = '\0';
 	USART_Print_string("%s\r\n", printBuf);
 
