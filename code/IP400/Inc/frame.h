@@ -186,7 +186,7 @@ BOOL SendTextFrame(char *srcCall, uint16_t srcPort, char *destCall, uint16_t dst
 void SendBeaconFrame(char *srcCall, uint8_t *payload, int bcnlen);
 
 //
-BOOL EnqueChatFrame(void *Frame, int length);	// queue a chat frame
+BOOL EnqueChatFrame(void *Frame);				// queue a chat frame
 FRAME_STATS *GetFrameStats(void);				// return the frame stats
 uint32_t GetRadioStatus(void);					// get the radio status
 uint8_t GetFSMState(void);						// get FSM state
