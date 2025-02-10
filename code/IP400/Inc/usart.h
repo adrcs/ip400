@@ -57,5 +57,6 @@ void USART_Print_string(char *format, ...);
 void LPUART_RxBuffer_reset(void);
 size_t gpsbuffer_bytesInBuffer(void);
 DATA_ELEMENT gpsbuffer_get(UART_TIMEOUT_T timeout);
+void LPUART_Send_String(char *str, uint16_t len);
 
 #endif /* INC_USART_H_ */

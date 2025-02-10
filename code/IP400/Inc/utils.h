@@ -29,6 +29,9 @@ int ascii2Dec(char *dec);
 // and its double counterpart...
 double ascii2double(char *val);
 
+// hex to ascii
+void hex2ascii(uint8_t hex, char *buf);
+
 // check an entry for floating point
 BOOL isfloat(char *val);
 
