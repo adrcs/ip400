@@ -49,6 +49,7 @@
 #define	GPS_FIX_LEN			20			// gps fix length
 #define	GPS_BFR_SIZE		140			// GPS buffer size
 
+#if __ENABLE_GPS
 // NMEA GGA Sentence fields
 char *nmeaMsgTag = "RMC";				// sentence we are processing
 enum {
@@ -67,6 +68,35 @@ enum {
 	NMEA_STATE_SOM=0,	// start of message
 	NMEA_STATE_MSG,		// in the message
 };
+
+#define	N_NMEA_SEN		14		// number of NMEA sentences
+enum	{
+	NMEA_CMD_DISABLED=0,		// disabled
+	NMEA_CMD_ONCE,				// once per fix
+	NMEA_CMD_2FIX,				// once every 2 fixes
+	NMEA_CMD_3FIX,				// once every 3 fixes
+	NMEA_CMD_4FIX,				// once every 4 fixes
+	NMEA_CMD_5FIX,				// once every 5 fixes
+};
+
+char *nmeaCmd = "$PMTK314";		// command
+uint8_t	senCmds[N_NMEA_SEN] = {
+	NMEA_CMD_DISABLED, 			// 0:GLL disabled
+	NMEA_CMD_ONCE,				// 1: RMC once
+	NMEA_CMD_DISABLED,			// 2: VTG disabled
+	NMEA_CMD_DISABLED,			// 3: GGA disabled
+	NMEA_CMD_DISABLED,			// 4: GSA disabled
+	NMEA_CMD_DISABLED,			// 5: GSV disabled
+	NMEA_CMD_DISABLED,			// 6 not used
+	NMEA_CMD_DISABLED,			// 7
+	NMEA_CMD_DISABLED,			// 13
+	NMEA_CMD_DISABLED,			// 14
+	NMEA_CMD_DISABLED,			// 15
+	NMEA_CMD_DISABLED,			// 16
+	NMEA_CMD_DISABLED,			// 17
+	NMEA_CMD_DISABLED 			// 18
+};
+#endif
 
 // hemispheres
 enum {
@@ -97,6 +127,7 @@ uint8_t GPSProcBuf[GPS_BFR_SIZE];
 uint8_t *GPSBufPtr;
 uint8_t GPSMsgSize;
 uint8_t NMEAState;
+char cmdBuf[MAX_BEACON];
 //
 BOOL haveGPSFix = FALSE;
 BOOL gpsEchoReady=FALSE;
@@ -108,6 +139,7 @@ char *gpsFlds[GPS_BFR_SIZE];
 
 // fwd Refs in this module in GPS mode
 BOOL processGPSMessage(uint8_t *GPSMsgBuf, uint8_t bufferSize);
+void sendGPSCmd(void);
 #endif
 
 //fwd refs w/o GPS
@@ -157,6 +189,11 @@ void Beacon_Task_exec(void)
 		return;
 	}
 	timerCtrValue = timerInitValue;
+
+#if __ENABLE_GPS
+	// send a command to the GPS every beacon interval
+	sendGPSCmd();
+#endif
 
 	// start with the header
 	beacon_hdr.setup.flags = setup_memory.params.setup_data.flags;
@@ -288,6 +325,37 @@ void GPS_Task_exec(void)
 }
 
 #if __ENABLE_GPS
+/*
+ * Send a command to the GPS device to limit traffic
+ */
+void sendGPSCmd(void)
+{
+	uint8_t cksum = 0;
+	char *buf = cmdBuf;
+	strcpy(buf, nmeaCmd);
+	buf += strlen(nmeaCmd);
+
+	for(int j=1;j<strlen(nmeaCmd);j++)
+		cksum ^= nmeaCmd[j];
+
+	for(int i=0;i<N_NMEA_SEN;i++)	{
+		*buf = ',';
+		cksum ^= *buf++;
+		*buf = senCmds[i] + '0';
+		cksum ^= *buf++;
+	}
+
+	*buf++ = '*';
+	hex2ascii(cksum, buf);
+	buf += 2;
+
+	*buf++ = '\r';
+	*buf++ = '\n';
+	*buf = '\0';
+	uint16_t buflen = buf - cmdBuf;
+
+	LPUART_Send_String(cmdBuf, buflen);
+}
 /*
  * Process an inbound GPS message
  */

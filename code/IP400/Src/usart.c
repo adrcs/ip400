@@ -237,8 +237,12 @@ void USART_Print_string(char *format, ...)
 // Transmit completed: trigger semaphore
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
+#if __ENABLE_GPS
+	// Not interested in LPUART
+	if(huart->Instance == LPUART1)
+		return;
+#endif
 	BaseType_t  xHigherPriorityTaskWoken = pdFALSE;
-
 	xSemaphoreGiveFromISR(txCompleted, &xHigherPriorityTaskWoken);
 
 }
@@ -269,6 +273,14 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 }
 
 #if __ENABLE_GPS
+// send a string to the LPUART
+void LPUART_Send_String(char *str, uint16_t len)
+{
+	// send using interrupt
+	HAL_UART_Transmit_IT(&hlpuart1, (const uint8_t *)str, len);
+}
+
+
 // receive a byte with DMA, wait for DMA completed interrupt
 void LPUART_Receive_char(void)
 {

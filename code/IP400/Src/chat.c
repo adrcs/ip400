@@ -191,6 +191,12 @@ BOOL Chat_Task_exec(void)
 
 			// escape key: get a destination call sign
 			case KEY_ESC:
+				if(destEnt)		{
+					strcpy(dest_call, BROADCAST);
+					USART_Print_string("Destination set to broadcast\r\n");
+					destEnt=FALSE;
+					break;
+				}
 				if(keyPos == 0)	{
 					USART_Print_string("%s->", entCall);
 					dp = dest_call;

@@ -39,13 +39,28 @@ int ascii2Dec(char *dec)
 	return retval*sgn;
 }
 
+// nibble to ascii
+char nib2ascii(uint8_t nib)
+{
+	char anib = (char)(nib + '0');
+	anib = (anib > '9') ? anib+('A'-'9') : anib;
+	return anib;
+}
+
+// hex to ascii
+void hex2ascii(uint8_t hex, char *buf)
+{
+	*buf++= nib2ascii(hex>>4);
+	*buf = nib2ascii(hex & 0xf);
+}
+
 // see if an entry is floating point
 BOOL isfloat(char *val)
 {
 	while(*val)
 		if(*val++ == '.')
-			return TRUE;
-	return FALSE;
+			return 1U;
+	return 0U;
 }
 
 // convert an ascii string to a double
