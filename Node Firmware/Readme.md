@@ -1,4 +1,4 @@
-# NOde Firmware
+# Node Firmware
 This directory contains the code sources. The current source code is at Rev level 1.1.
 
 Setting up a CubeIDE development project has several steps:
