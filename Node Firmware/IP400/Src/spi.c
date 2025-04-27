@@ -33,11 +33,6 @@
 #include "spi.h"
 #include "dataq.h"
 #include "tasks.h"
-#include "led.h"
-
-// conditionals
-#define __ENABLE_SPI_ON_TXENA	0						// enable spi sync output on TX enable for E04 modules
-#define __ENABLE_SPI_ON_PB1		0						// enable SPI sync output on PB0 for IP400 module
 
 #define	SPI_MAX_TIME	200								// 200 ms max no activity timeout
 #define	NO_SPI_TIMEOUT	(SPI_MAX_TIME/SPI_TASK_SCHED)	// timeout in schedule ticks
@@ -226,10 +221,6 @@ void SPI_Task_Exec(void)
 // scope trigger on nucleo board
 #if	_BOARD_TYPE==NUCLEO_BOARD	// board type in use
     HAL_GPIO_TogglePin(SCOPE_GPIO_Port, SCOPE_Pin);
-#else
-#if __ENABLE_SPI_ON_TXENA
-    HAL_GPIO_TogglePin(PA_ENA_GPIO_Port, PA_ENA_Pin);
-#endif
 #endif
 
 	/*

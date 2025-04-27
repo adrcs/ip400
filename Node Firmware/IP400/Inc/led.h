@@ -23,8 +23,7 @@
 #ifndef INC_LED_H_
 #define INC_LED_H_
 
-// config
-#define	REVERSE_LEADS	1		// reverse Bi-color LED leads on some boards
+#include <config.h>
 
 // 	LED functions
 enum {
@@ -41,28 +40,34 @@ enum {
 };
 
 #if _BOARD_TYPE == PI_BOARD
-// define the LED ports
-#define LED_Pin 			GPIO_PIN_15
-#define LED_GPIO_Port 		GPIOB
-#if REVERSE_LEADS
-// green on PA9, red on PB0
-#define LED_Green_Pin 		GPIO_PIN_9
-#define LED_Green_GPIO_Port GPIOA
-#define LED_Red_Pin 		GPIO_PIN_0
-#define LED_Red_GPIO_Port 	GPIOB
-#else
-// green on PB0, red on PA9
+// bidirectional LED
 #define LED_Green_Pin 		GPIO_PIN_0
 #define LED_Green_GPIO_Port GPIOB
 #define LED_Red_Pin 		GPIO_PIN_9
 #define LED_Red_GPIO_Port 	GPIOA
-#endif
 
-//
+// Tx LED
 #define	TXLED_Pin			GPIO_PIN_15
 #define	TXLED_GPIO_Port		GPIOB
-//
+
+// PA enable pin
 #define	PA_ENA_Pin			GPIO_PIN_0
+#define	PA_ENA_GPIO_Port	GPIOA
+#endif
+
+#if _BOARD_TYPE == TELEM_BOARD
+// define the LED ports
+#define LED_Green_Pin 		GPIO_PIN_14
+#define LED_Green_GPIO_Port GPIOB
+#define LED_Red_Pin 		GPIO_PIN_15
+#define LED_Red_GPIO_Port 	GPIOB
+
+// Tx LED
+#define	TXLED_Pin			GPIO_PIN_0
+#define	TXLED_GPIO_Port		GPIOA
+
+// PA enable pin
+#define	PA_ENA_Pin			GPIO_PIN_7
 #define	PA_ENA_GPIO_Port	GPIOA
 #endif
 

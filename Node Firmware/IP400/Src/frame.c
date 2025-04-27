@@ -30,7 +30,7 @@
 #include <config.h>
 
 #include <stm32wl3x_hal_mrsubg.h>
-#if _BOARD_TYPE==NUCLEO_BOARD
+#if _BOARD_TYPE == NUCLEO_BOARD
 #include <stm32wl3x_nucleo.h>
 #endif
 

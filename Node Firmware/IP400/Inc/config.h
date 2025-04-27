@@ -26,7 +26,7 @@
 // the board type is selected here...
 #define	PI_BOARD		0				// pi board
 #define	NUCLEO_BOARD	1				// Nucleo board
-#define	_BOARD_TYPE		PI_BOARD		// board type in use
+#define	_BOARD_TYPE		NUCLEO_BOARD	// board type in use
 
 // gps receiver enabled
 #if _BOARD_TYPE == PI_BOARD

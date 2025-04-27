@@ -51,6 +51,7 @@ union {
 
 #define		NETMASK			0xF8				// mask for last byte
 
+#ifdef __OLDIPSCHEME
 /*
  * Create an IP 10.x.x.x from the compressed callsign field
  */
@@ -97,6 +98,7 @@ void GetIP172Addr(IP400_MAC *fr, SOCKADDR_IN *ipaddr)
 	// port number from source
 	ipaddr->sin_port = 0;
 }
+#endif
 
 /*
  * Create an IP 172.16.x.x from the compressed callsign field and unique ID
