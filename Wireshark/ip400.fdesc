@@ -1,0 +1,208 @@
+#
+# IP400 Dissection field descriptions
+# file usrp.fdesc
+# M. Alcock, VE6VH (c)
+# this template dissects IP400 packets
+
+###########################################
+# ip400 packet encoding
+###########################################
+enum8 T_ip400_msg_type
+{
+    text_packet     0   # text packet
+    audio_packet    1   # compressed audio packet
+    video_packet    2   # compressed video packet
+    data_packet     3   # data packet
+    beacon_packet   4   # ping packet
+    ip_packet       5   # endcapsulted ip
+    ax25_packet     6   # ax.25 frame
+    dtmf_frame      7   # dtmf frame
+    dmr_frame       8   # dmr frame
+    dstar_frame     9   # dstar frame
+    tia_project25   10  # p25
+    nxdn_frame      11  # nxdn
+    m17_frame       12  # m17
+    unused_frame_1  13
+    unused_frame_2  14
+    command_frame   15  # local command frame
+}
+# Frame status 
+enum8 T_Frame_Status
+{
+    Status_NO_DATA    0     #   No data
+    Status_Complete   1     #   Complete Frame
+    Status_Fragment   2     #   Fragment
+    Status_Reassem    3     #   Reassembled Frame
+}
+
+#data rate interpretation
+switch T_Status_Switch 
+{
+    case T_Frame_Status::Status_NO_DATA     : print ("?Invalid")          ;
+    case T_Frame_Status::Status_Complete    : print ("Complete Frame")    ;
+    case T_Frame_Status::Status_Fragment    : print ("Fragment")          ;
+    case T_Frame_Status::Status_Reassem     : print ("Reassembled Frame") ;
+}
+
+###########################################
+# ip400 message header
+###########################################
+struct T_ip400_header
+{
+    byte_order big_endian;
+    string(4)           eye;            # eye: ip+400
+    hide uint8          status;         # status field
+    T_Status_Switch(status) Frame_Status;
+    uint16              offset;         # offset
+    uint16              length;         # length
+    byte_order little_endian;
+    uint32{d=hex}       fromCall;       # from callsign
+    byte_order big_endian;
+    uint16              fromport;       # from port
+    uint32{d=hex}       toCall;         # to call sign
+    uint16              toport;         # to port
+    T_ip400_msg_type    msg_id;         # message type  
+}
+
+###########################################
+# ip400 message flags
+###########################################
+struct T_ip400_flags
+{
+    uint8                   hopcount;       # hop count
+    bool1                   canrepeat;      # can repeat
+    bool1                   connectionless; # is connectionless
+    bool1                   iscommand;      # is a command
+    bool1                   destext;        # dest callsign extended
+    bool1                   srcext;         # src callsign extended
+    bool1                   hasHopTable;    # has a hop table
+    uint2                   compression;    # compression types
+    uint32{d=hex}[hopcount] hopTable;       # hop table
+}
+
+###########################################
+# decodes for the main message types
+###########################################
+# default packet type
+struct T_ip400_packet
+{
+    T_ip400_header  header;
+    T_ip400_flags   flags;
+    raw(*)          data;
+}
+
+# data rate definitions
+enum8 T_Data_Rates
+{
+    Rate_2FSK_1200    0     #   FSK 1200 bps
+    Rate_C4FM_9600    1     #   C4FM 9600
+    Rate_4FSK_56Kb    2     #   4 FSK 56Kb
+    Rate_4FSK_100Kb   3     #   4 FSK 100Kb
+    Rate_4FSK_200Kb   4     #   4 FSK 200Kb
+    Rate_4FSK_300Kb   5     #   4 FSK 300Kb
+    Rate_4FSK_400Kb   6     #   4 FSK 400Kb
+    Rate_4FSK_600Kb   7     #   4 FSK 600Kb
+    Rate_OFDM_400Kb   8     #   OFDM 400Kb
+    Rate_OFDM_800Kb   9     #   OFDM 800Kb
+    Rate_OFDM_1200Kb  10    #   OFDM 1200Kb
+    Rate_OFDM_1600Kb  11    #   OFDM 1600Kb
+    Rate_OFDM_2400Kb  12    #   OFDM 2400Kb
+}
+
+#data rate interpretation
+switch T_Rate_Switch 
+{
+    case T_Data_Rates::Rate_2FSK_1200     : print ("FSK 1200bps")      ;
+    case T_Data_Rates::Rate_C4FM_9600     : print ("C4FM 9600bps")     ;
+    case T_Data_Rates::Rate_4FSK_56Kb     : print ("4FSK 56Kbps")      ;
+    case T_Data_Rates::Rate_4FSK_100Kb    : print ("4FSK 100Kbps")     ;
+    case T_Data_Rates::Rate_4FSK_200Kb    : print ("4FSK 200Kbps")     ;
+    case T_Data_Rates::Rate_4FSK_300Kb    : print ("4FSK 300Kbps")     ;
+    case T_Data_Rates::Rate_4FSK_400Kb    : print ("4FSK 400Kbps")     ;
+    case T_Data_Rates::Rate_4FSK_600Kb    : print ("4FSK 600Kbps")     ;
+    case T_Data_Rates::Rate_OFDM_400Kb    : print ("OFDM 400Kbps")     ;
+    case T_Data_Rates::Rate_OFDM_800Kb    : print ("OFDM 800Kbps")     ;
+    case T_Data_Rates::Rate_OFDM_1200Kb   : print ("OFDM 1200Kbps")    ;
+    case T_Data_Rates::Rate_OFDM_1600Kb   : print ("OFDM 1600Kbps")    ; 
+    case T_Data_Rates::Rate_OFDM_2400Kb   : print ("OFDM 2400Kbps")    ; 
+}
+
+#fix type interpretation
+switch T_fixType_switch 
+{
+    case  "FXD"         : print ("Supplied Data");
+    case  "GPS"         : print ("GPS Receiver");
+    default             : print ("Unknown");
+}
+
+# beacon header
+struct T_ip400_beacon_header
+{
+    hide uint3                  rate_spec;
+    T_Rate_Switch(rate_spec)    Rate;
+    bool1                       extCall;
+    bool1                       canRepeat;
+    bool1                       isAREDN;
+    bool1                       hssOFDM;
+    bool1                       hasFSK;
+    hide uint8                  TxOut;
+    print ("Tx Power +%d dBm", TxOut);
+    hide uint8                  firm_major;
+    hide uint8                  firm_minor;
+    print ("Firmware V%c.%c", firm_major, firm_minor);
+}
+
+# beacon position info
+struct T_ip400_beacon_pos
+{
+    hide string(3)              fixType;
+    T_fixType_switch(fixType)	Fix_Source; 
+    hide string(1)              delimeter;
+    string                      Position;
+}
+
+# beacon packet
+struct T_ip400_beacon
+{
+    T_ip400_header              Header;
+    T_ip400_flags               Flags;
+    T_ip400_beacon_header       Beacon_Header;
+    T_ip400_beacon_pos          Position;
+}
+
+# T_ip400_msg_type is the main message (as defined in the protocol description)
+# according to the parameter msg_id (of type t_usrp_msg_type), we define
+# the main message to be defined by one of the message types
+switch T_ip400_switch T_ip400_msg_type
+{
+    case T_ip400_msg_type::text_packet    : T_ip400_packet "";
+    case T_ip400_msg_type::audio_packet   : T_ip400_packet "";
+    case T_ip400_msg_type::video_packet   : T_ip400_packet "";
+    case T_ip400_msg_type::beacon_packet  : T_ip400_beacon "";
+    case T_ip400_msg_type::ip_packet      : T_ip400_packet "";
+    case T_ip400_msg_type::ax25_packet    : T_ip400_packet "";
+    case T_ip400_msg_type::dtmf_frame     : T_ip400_packet "";
+    case T_ip400_msg_type::dmr_frame      : T_ip400_packet "";
+    case T_ip400_msg_type::dstar_frame    : T_ip400_packet "";
+    case T_ip400_msg_type::tia_project25  : T_ip400_packet "";
+    case T_ip400_msg_type::nxdn_frame     : T_ip400_packet "";
+    case T_ip400_msg_type::m17_frame      : T_ip400_packet "";
+    case T_ip400_msg_type::unused_frame_1 : T_ip400_packet "";
+    case T_ip400_msg_type::unused_frame_2 : T_ip400_packet "";
+    case T_ip400_msg_type::command_frame  : T_ip400_packet "";
+    default                               : T_ip400_packet "";
+}
+
+#function to find usrp packets
+function bool8 heuristic_func ()
+{
+    byte_order  big_endian;
+    string(4)   header;
+
+    if (header != "IP4C")
+    {
+        return bool8::false;
+    }
+    return bool8::true;
+}
+

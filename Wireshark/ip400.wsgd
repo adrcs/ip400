@@ -1,0 +1,27 @@
+# file ip400.wsgd
+
+# protocol metadata for IP400 protocol
+# Martin Alcock, VE6VH
+#
+PROTONAME IP400 packet protocol
+PROTOSHORTNAME IP400
+PROTOABBREV ip400
+
+# conditions on which the dissector is applied:
+# the protocol will be applied on all UDP messages that start with "IP400"
+PARENT_HEURISTIC udp
+HEURISTIC_FUNCTION heuristic_func
+
+# the name of the header structure
+MSG_HEADER_TYPE                    T_ip400_header
+# field which permits to identify the message type.
+MSG_ID_FIELD_NAME                  msg_id
+# the main message type - usually it is a fake message, built of one
+#    of the possible messages
+MSG_MAIN_TYPE                      T_ip400_switch(msg_id)
+
+# this token marks the end of the protocol description
+PROTO_TYPE_DEFINITIONS
+
+# refer to the description of the data format
+include ip400.fdesc;
