@@ -28,8 +28,8 @@
 #include <cmsis_os2.h>
 #include <FreeRTOS.h>
 #include <semphr.h>
+#include <config.h>
 
-#include "config.h"
 #include "stream_buffer.h"
 #include "types.h"
 #include "streambuffer.h"
@@ -53,15 +53,15 @@ char usartPrintBuffer[200];
 // fwd refs here...
 void USART_Receive_char(void);
 
-#if __ENABLE_GPS
+// otherwise, it is defined
+#if ENABLE_LPUART
 #define	LPUART_DMA_SIZE			32
 static DATA_ELEMENT LPUARTRxChar[LPUART_DMA_SIZE];
 
 void LPUART_Receive_char(void);
-
 StreamBufferHandle_t	LPUART_RxBuffer;			// handle to buffer
 StaticStreamBuffer_t   	LPUART_StreamBuffer;
-uint8_t gps_data[bufferSIZE];
+uint8_t lpuart_data[bufferSIZE];
 #endif
 
 /*
@@ -77,8 +77,8 @@ void USART_API_init(void)
 	USART_RxBuffer_reset();
     USART_Receive_char();
 
-#if __ENABLE_GPS
-	LPUART_RxBuffer = xStreamBufferCreateStatic(bufferSIZE, 1, gps_data, &LPUART_StreamBuffer);
+#if ENABLE_LPUART
+	LPUART_RxBuffer = xStreamBufferCreateStatic(bufferSIZE, 1, lpuart_data, &LPUART_StreamBuffer);
 	LPUART_RxBuffer_reset();
     LPUART_Receive_char();
 #endif
@@ -91,7 +91,7 @@ void USART_RxBuffer_reset(void)
 	return;
 }
 
-#if __ENABLE_GPS
+#if ENABLE_LPUART
 // reset the LPUART Buffer
 void LPUART_RxBuffer_reset(void)
 {
@@ -129,15 +129,15 @@ DATA_ELEMENT databuffer_get(UART_TIMEOUT_T timeout)
 /*
  * Similar but from GPS buffer
  */
-#if __ENABLE_GPS
+#if ENABLE_LPUART
 // return the number of byte in the buffer
-size_t gpsbuffer_bytesInBuffer(void)
+size_t lpuart_buffer_bytesInBuffer(void)
 {
 	size_t nBytes = xStreamBufferBytesAvailable(LPUART_RxBuffer);
 	return nBytes;
 }
 // get a bytes
-DATA_ELEMENT gpsbuffer_get(UART_TIMEOUT_T timeout)
+DATA_ELEMENT lpuart_buffer_get(UART_TIMEOUT_T timeout)
 {
 	DATA_ELEMENT retval;
 
@@ -237,7 +237,7 @@ void USART_Print_string(char *format, ...)
 // Transmit completed: trigger semaphore
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
-#if __ENABLE_GPS
+#if ENABLE_LPUART
 	// Not interested in LPUART
 	if(huart->Instance == LPUART1)
 		return;
@@ -259,7 +259,7 @@ void USART_Receive_char(void)
 // NB: Console USART and GPS LPUART share the same HAL routine
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-#if __ENABLE_GPS
+#if ENABLE_LPUART
 	// service the LPUART
 	if(huart->Instance == LPUART1)	{
 		xStreamBufferSendFromISR(LPUART_RxBuffer, LPUARTRxChar, 1, NULL);
@@ -272,7 +272,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	HAL_UART_Receive_IT(&huart1,(uint8_t *)USARTRxChar,1);
 }
 
-#if __ENABLE_GPS
+#if ENABLE_LPUART
 // send a string to the LPUART
 void LPUART_Send_String(char *str, uint16_t len)
 {

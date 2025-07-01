@@ -36,6 +36,7 @@
 #define	IP_172_ID		2				// use ip 172 from ID
 #define __IP_GROUP		IP_172_ID
 
+#define	IP_BROADCAST	0xFFFF			// broadcast MAC address
 
 /* If your port already typedef's sa_family_t, define SA_FAMILY_T_DEFINED
    to prevent this code from redefining it. */
@@ -75,7 +76,7 @@ void GetIP10Addr(IP400_MAC *fr, SOCKADDR_IN *ipaddr);
 void GetIP172Addr(IP400_MAC *fr, SOCKADDR_IN *ipaddr);
 void Get172AddrFromID(IP400_MAC *fr, SOCKADDR_IN *ipaddr);
 
-void GetIPAddrFromMAC(IP400_MAC *fr, SOCKADDR_IN *ipAddr);
+void GetVPNAddrFromMAC(IP400_MAC *fr, SOCKADDR_IN *ipAddr);
 
 #if __IP_GROUP == IP_172_ID
 #define GetIPAddr	Get172AddrFromID
@@ -90,8 +91,8 @@ void GetIPAddrFromMAC(IP400_MAC *fr, SOCKADDR_IN *ipAddr);
 #endif
 
 // Get IP address from setup data
-void GetMyIP(SOCKADDR_IN **ipAddr);
+void GetMyVPN(SOCKADDR_IN **ipAddr);
 void GetMyMAC(IP400_MAC **mac);
-uint16_t GetIPLowerWord(void);
+uint16_t GetVPNLowerWord(void);
 
 #endif /* INC_IP_H_ */

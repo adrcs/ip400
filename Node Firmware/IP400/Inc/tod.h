@@ -37,4 +37,6 @@ void  TOD_10SecTimer(void);				// 10 second timer
 void  getTOD(TIMEOFDAY *time);
 BOOL  setTOD(char *todString);
 
+int getElapsed(TIMEOFDAY *time);
+
 #endif /* INC_TOD_H_ */

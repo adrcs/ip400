@@ -38,17 +38,6 @@
 #define	EXPIRY_TIME		100			// seconds since last heard
 #define	RSSI_SCALAR		161			// 95-Gain(rx), appros 65
 
-char *FSKSpeeds[] = {
-		"FSK 1200",
-		"FSK 9600",
-		"FSK_56K",
-		"FSK_100K",
-		"FSK_200K",
-		"FSK_300K",
-		"FSK_400K",
-		"FSK_600K"
-};
-
 // table entry status
 typedef enum {
 	MESHTBL_UNUSED=0,			//  unused entry
@@ -68,6 +57,10 @@ typedef struct mesh_entry_t {
 	uint8_t				hopCount;		// hop count
 } MESH_ENTRY;
 
+// time constants
+#define	MAX_MISSING		(30*60)			// 30 minute max elapsed time
+#define MAX_LOST		(60*60)			// one hour to gone...
+
 // mesh table definitions
 #define	MAX_MESH_MEMORY		2048			// max amount of mesh memory used
 #define	MAX_MESH_ENTRIES	(MAX_MESH_MEMORY/sizeof(MESH_ENTRY))
@@ -76,12 +69,13 @@ typedef struct mesh_entry_t {
 // table size is limited to by memory defintion
 static MESH_ENTRY MeshTable[MAX_MESH_ENTRIES] __attribute__((section("MESHTABLE")));
 int nMeshEntries = 0;
+int lastEntryNum = 0;
 
 BEACON_HEADER 		mesh_bcn_hdr;			// beacon header
 uint32_t 			seqNum;					// sequence number received
 
 // forward refs in this module
-int findCall(IP400_MAC *macAddr);
+int findCall(IP400_MAC *call, int start);
 void AddMeshEntry(IP400_FRAME *frameData, int16_t rssi, BOOL isBeacon);
 
 // task initialization
@@ -105,8 +99,8 @@ void Mesh_ProcessBeacon(void *rxFrame, uint32_t rssi)
 
 	// see if we already know about it
 	// if so, just update last heard, expected sequence and rssi
-	// NB: firt frame is sent with an all '1's sequence number
-	if((entryNum = findCall(&frameData->source)) != ENTRY_NOTFOUND)	{
+	// NB: first frame is sent with an all '1's sequence number
+	if((entryNum = findCall(&frameData->source, 0)) != ENTRY_NOTFOUND)	{
 
 		// if it is repeated frame with a higher hop count, ignore it
 		if(MeshTable[entryNum].hopCount < frameData->flagfld.flags.hop_count)
@@ -127,7 +121,8 @@ void Mesh_ProcessBeacon(void *rxFrame, uint32_t rssi)
 		MeshTable[entryNum].capabilities = mesh_bcn_hdr.setup.flags;
 		MeshTable[entryNum].txPower = mesh_bcn_hdr.setup.txPower;
 
-		// all done
+		// all done: change status to OK
+		MeshTable[entryNum].status = MESHTBL_VALID;
 		return;
 	}
 
@@ -160,7 +155,7 @@ void AddMeshEntry(IP400_FRAME *frameData, int16_t actRSSI, BOOL isBeacon)
 	newEntry.txPower = 0;
 	newEntry.hopCount = frameData->flagfld.flags.hop_count;
 
-	GetIPAddrFromMAC(&newEntry.macAddr, &ipAddr);
+	GetVPNAddrFromMAC(&newEntry.macAddr, &ipAddr);
 
 	if(isBeacon)	{
 		memcpy(mesh_bcn_hdr.hdrBytes, (struct beacon_hdr_t *)frameData->buf, sizeof(BEACON_HEADER));
@@ -184,7 +179,7 @@ BOOL Check_Sender_Address(void *rxFrame, uint32_t rssi)
 	IP400_FRAME *frameData = (IP400_FRAME *)rxFrame;
 	int entryNum;
 
-	if((entryNum = findCall(&frameData->source)) != ENTRY_NOTFOUND)	{
+	if((entryNum = findCall(&frameData->source, 0)) != ENTRY_NOTFOUND)	{
 		// rebooted
 		if(frameData->seqNum == 0xFFFFFFFF)
 			MeshTable[entryNum].nextSeq = 0;
@@ -202,6 +197,35 @@ BOOL Check_Sender_Address(void *rxFrame, uint32_t rssi)
 }
 
 /*
+ * Update the status based on last heard
+ */
+void UpdateMeshStatus(void)
+{
+	int timeSinceLastBeacon;
+
+	for(int i=0;i<nMeshEntries;i++)	{
+
+		switch(MeshTable[i].status)	{
+
+		case MESHTBL_UNUSED:
+			break;
+
+		case MESHTBL_VALID:
+			timeSinceLastBeacon = getElapsed(&MeshTable[i].lastHeard);
+			if(timeSinceLastBeacon > MAX_MISSING)
+				MeshTable[i].status = MESHTBL_LOST;
+			break;
+
+		case MESHTBL_LOST:
+			timeSinceLastBeacon = getElapsed(&MeshTable[i].lastHeard);
+			if(timeSinceLastBeacon > MAX_LOST)
+				MeshTable[i].status = MESHTBL_UNUSED;
+
+		}
+	}
+}
+
+/*
  * Check if the frame can be accepted.
  * Accept a broadcast or my address if:
  * 	-the sender is not in the mesh table
@@ -216,32 +240,126 @@ BOOL Mesh_Accept_Frame(void *rxFrame, uint32_t rssi)
 
 	// frame is sent a broadcast address
 	if((frameData->dest.callbytes.bytes[0] == BROADCAST_ADDR)
-		&&	(frameData->dest.callbytes.bytes[0] == BROADCAST_ADDR))
+		&&	(frameData->dest.callbytes.bytes[1] == BROADCAST_ADDR))
 		return Check_Sender_Address(rxFrame, rssi);
 
+	uint16_t myIPAddr = GetVPNLowerWord();
 	callDecode(&frameData->dest, decCall, &port);
-	if(CompareToMyCall(decCall))
+	if(CompareToMyCall(decCall)) {
+		// accept all broadcast frames to my callsign
+		if(frameData->dest.vpnBytes.encvpn == IP_BROADCAST)
+			return TRUE;
+		// otherwise check my IP
+		else if(frameData->dest.vpnBytes.encvpn == myIPAddr)
 		return Check_Sender_Address(rxFrame, rssi);
+	}
 
 	// not for me
 	return FALSE;
 }
 
-// find a callsign in the list
-int findCall(IP400_MAC *call)
+// encode a callsign: ensure length is correct
+uint32_t EncodeCallSign(char *call, int len)
 {
-	for(int i=0;i<nMeshEntries;i++)	{
-		if(MeshTable[i].macAddr.callbytes.encoded == call->callbytes.encoded)
+	IP400_MAC encoded;
+
+	// ensure the call sign is padded out to at least 6 characters
+	char paddedCall[20];
+	strcpy(paddedCall, call);
+	strcat(paddedCall, "      ");
+
+	EncodeChunk(paddedCall, MAX_CALL, &encoded.callbytes.encoded);
+	return(encoded.callbytes.encoded);
+}
+
+// compare the IP addresses. FFFF is considered
+// a broadcast to all with the same callsign
+BOOL ipCompare(uint16_t tblent, uint16_t compareto)
+{
+	if(compareto == IP_BROADCAST)
+		return TRUE;
+
+	if(tblent == compareto)
+		return TRUE;
+
+	// AX,25 compatibility enables SSID instead of VPN address
+#if __AX25_COMPATIBILITY
+	if(((tblent&0xFFF0) == 0xFFA0) && ((tblent&0xF) == setup_memory.params.setup_data.flags.SSID))
+		return TRUE;
+#endif
+
+	return FALSE;
+}
+
+// find a callsign in the list
+int findCall(IP400_MAC *call, int start)
+{
+	for(int i=start;i<nMeshEntries;i++)	{
+		if((MeshTable[i].macAddr.callbytes.encoded == call->callbytes.encoded)
+		    && ipCompare(MeshTable[i].macAddr.vpnBytes.encvpn, call->vpnBytes.encvpn)
+			&& (MeshTable[i].status == MESHTBL_VALID))
 			return i;
 	}
 	return ENTRY_NOTFOUND;
 }
+
+int getNMeshEntries(char *dest_call, int len)
+{
+	IP400_MAC encoded;
+	int nEntries = 0;
+
+	encoded.callbytes.encoded = EncodeCallSign(dest_call, len);
+	for(int i=0;i<nMeshEntries;i++)	{
+		if((MeshTable[i].macAddr.callbytes.encoded == encoded.callbytes.encoded) && (MeshTable[i].status == MESHTBL_VALID))
+			nEntries++;
+	}
+	return nEntries;
+}
+
+// return any MAC entry for a callsign
+IP400_MAC *getMeshEntry(char *dest_call, int len)
+{
+	IP400_MAC encoded;
+
+	encoded.callbytes.encoded = EncodeCallSign(dest_call, len);
+	encoded.vpnBytes.encvpn = IP_BROADCAST;
+	if((lastEntryNum=findCall(&encoded, 0)) == ENTRY_NOTFOUND)
+		return NULL;
+
+	return(&MeshTable[lastEntryNum].macAddr);
+}
+
+// find the next similar entry
+IP400_MAC *getNextEntry(char *dest_call, int len)
+{
+	IP400_MAC encoded;
+
+	// last was not found
+	if(lastEntryNum == ENTRY_NOTFOUND)
+		return NULL;
+
+	// fell off the end?
+	if(++lastEntryNum >= nMeshEntries)
+		return NULL;
+
+	// keep looking
+	encoded.callbytes.encoded = EncodeCallSign(dest_call, len);
+	encoded.vpnBytes.encvpn = IP_BROADCAST;
+
+	if((lastEntryNum=findCall(&encoded, lastEntryNum)) == ENTRY_NOTFOUND)
+		return NULL;
+
+	return(&MeshTable[lastEntryNum].macAddr);
+
+}
+
 
 char capabilties[50];
 // return the capabilities of a node
 char *GetCapabilities(SETUP_FLAGS cap)
 {
 	mesh_bcn_hdr.setup.flags = cap;
+	char tmpBuf[50];
 
 	if(mesh_bcn_hdr.hdrBytes[0] == 0)	{
 		strcpy(capabilties, "Unknown");
@@ -249,14 +367,17 @@ char *GetCapabilities(SETUP_FLAGS cap)
 
 	// modes
 	if(cap.fsk)		{
-		sprintf(capabilties, "%s", FSKSpeeds[cap.rate]);
+		sprintf(capabilties, "FSK ");
 	}
 	else if(cap.ofdm)	{
 		strcat(capabilties, " OFDM");
 	}
-	else if(cap.aredn)	{
-		strcat(capabilties, "AREDN");
+
+	if(cap.AX25)	{
+		sprintf(tmpBuf, " AX.25 SSID %d", cap.SSID);
+		strcat(capabilties, tmpBuf);
 	}
+
 
 	// repeat mode is on..
 	if(cap.repeat)	{
@@ -266,10 +387,21 @@ char *GetCapabilities(SETUP_FLAGS cap)
 	return capabilties;
 }
 
+
+// remove spaces in callsign string
+void trim(char *string)
+{
+	while(*string)	{
+		if(*string == ' ')
+			*string = '\0';
+		string++;
+	}
+}
+
 // list the mesh status: walk the mesh entries
 void Mesh_ListStatus(void)
 {
-	USART_Print_string("Stations Heard: %d\r\n", nMeshEntries);
+	USART_Print_string("Nodes Heard: %d\r\n", nMeshEntries);
 	if(nMeshEntries == 0)
 		return;
 
@@ -277,15 +409,22 @@ void Mesh_ListStatus(void)
 	char decodedCall[20];
 	SOCKADDR_IN ipAddr;
 
-	USART_Print_string("Call\tIP Addr\t\tRSSI\tSeq\tLast Heard\tHops\tCapabilities\r\n");
+	USART_Print_string("Call\tVPN Addr\tStatus\tRSSI\tSeq\tLast Heard\tHops\tCapabilities\r\n");
 
 	for(int i=0;i<nMeshEntries;i++)	{
-		if(MeshTable[i].status == MESHTBL_VALID)		{
+
+		switch(MeshTable[i].status)		{
+
+		case MESHTBL_UNUSED:
+			break;
+
+		case MESHTBL_VALID:
 
 			callDecode(&MeshTable[i].macAddr, decodedCall, NULL);
-			GetIPAddrFromMAC(&MeshTable[i].macAddr, &ipAddr);
+			trim(decodedCall);
+			GetVPNAddrFromMAC(&MeshTable[i].macAddr, &ipAddr);
 
-			USART_Print_string("%s\t%d.%d.%d.%d\t%-03d\t%04d\t%02d:%02d:%02d\t%d\t%s %d dBm\r\n",
+			USART_Print_string("%s\t%d.%d.%d.%d\tOK\t%-03d\t%04d\t%02d:%02d:%02d\t%d\t%s %d dBm\r\n",
 					decodedCall,
 					ipAddr.sin_addr.S_un.S_un_b.s_b1, ipAddr.sin_addr.S_un.S_un_b.s_b2,
 					ipAddr.sin_addr.S_un.S_un_b.s_b3, ipAddr.sin_addr.S_un.S_un_b.s_b4,
@@ -295,7 +434,19 @@ void Mesh_ListStatus(void)
 					MeshTable[i].hopCount,
 					GetCapabilities(MeshTable[i].capabilities),
 					MeshTable[i].txPower);
+			break;
+
+		case MESHTBL_LOST:
+			callDecode(&MeshTable[i].macAddr, decodedCall, NULL);
+			GetVPNAddrFromMAC(&MeshTable[i].macAddr, &ipAddr);
+
+			USART_Print_string("%s\t%d.%d.%d.%d\tLOST\r\n",
+					decodedCall,
+					ipAddr.sin_addr.S_un.S_un_b.s_b1, ipAddr.sin_addr.S_un.S_un_b.s_b2,
+					ipAddr.sin_addr.S_un.S_un_b.s_b3, ipAddr.sin_addr.S_un.S_un_b.s_b4
+					);
+			break;
 		}
-		USART_Print_string("\r\n\n");
 	}
+	USART_Print_string("\r\n\n");
 }

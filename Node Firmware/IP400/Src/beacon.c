@@ -189,26 +189,42 @@ void Beacon_Task_exec(void)
 		return;
 	}
 	timerCtrValue = timerInitValue;
+	SendBeacon();
 
 #if __ENABLE_GPS
 	// send a command to the GPS every beacon interval
 	sendGPSCmd();
 #endif
+}
+
+void SendBeacon(void)
+{
 
 	// start with the header
 	beacon_hdr.setup.flags = setup_memory.params.setup_data.flags;
 	beacon_hdr.setup.txPower = setup_memory.params.radio_setup.outputPower;
+	beacon_hdr.setup.txFrequency = setup_memory.params.radio_setup.lFrequencyBase;
+	beacon_hdr.setup.rxFrequency = setup_memory.params.radio_setup.lFrequencyBase;
 	uint8_t *buf = bcnPayload;
 
-	// beacon header: flags, txpower and firmware version
+	// beacon header: flags, txpower
 	// brute force copy: compiler rounds SETUP_FLAGS to 32 bits
 	*buf++ = beacon_hdr.hdrBytes[0];
 	*buf++ = beacon_hdr.hdrBytes[4];
+
+	// tx frequency
+	for(int i=0;i<sizeof(uint32_t);i++)
+		*buf++ = beacon_hdr.hdrBytes[8+i];
+
+	// rx frequency
+	for(int i=0;i<sizeof(uint32_t);i++)
+		*buf++ = beacon_hdr.hdrBytes[12+i];
 
 	// firmware version
 	*buf++ = def_params.params.FirmwareVerMajor + '0';
 	*buf++ = def_params.params.FirmwareVerMinor + '0';
 
+	// station data
 	char *pPayload = (char *)buf;
 	char *p2 =  pPayload;
 
@@ -246,14 +262,21 @@ void Beacon_Task_exec(void)
 
 	// home grid square
 	strcat(pPayload, setup_memory.params.setup_data.gridSq);
+	strcat(pPayload, ",");
+
+	// Description field
+	strcat(pPayload, setup_memory.params.setup_data.Description);
 
 	int pos = strlen((char *)p2);
 	buf[pos++] = '\0';			// null terminated
 
-	pos += 2*sizeof(uint8_t);	// account for firmware field
+	pos += 2*sizeof(uint8_t) + 2*sizeof(uint32_t);	// account for firmware and freq fields
 
 	// time to send a beacon frame..
-	SendBeaconFrame(setup_memory.params.setup_data.stnCall, bcnPayload, pos+1);
+	SendBeaconFrame(bcnPayload, pos+1);
+
+	// update the mesh table
+	UpdateMeshStatus();
 }
 
 /*

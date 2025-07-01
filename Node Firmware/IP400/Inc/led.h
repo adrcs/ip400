@@ -25,6 +25,12 @@
 
 #include <config.h>
 
+// led command modes
+typedef enum {
+	LED_CMD_RF,					// set RF indication mode
+	LED_CMD_TELEM				// set telemetry mode
+} LEDCommand;
+
 // 	LED functions
 enum {
 
@@ -39,7 +45,7 @@ enum {
       N_LED_MODE			   // modes1
 };
 
-#if _BOARD_TYPE == PI_BOARD
+#if (_BOARD_TYPE == PI_BOARD) || (_BOARD_TYPE == IP400_MODULE)
 // bidirectional LED
 #define LED_Green_Pin 		GPIO_PIN_0
 #define LED_Green_GPIO_Port GPIOB
@@ -53,6 +59,12 @@ enum {
 // PA enable pin
 #define	PA_ENA_Pin			GPIO_PIN_0
 #define	PA_ENA_GPIO_Port	GPIOA
+#endif
+
+#if (_BOARD_TYPE == PI_BOARD) || (_BOARD_TYPE == IP400_MODULE) || (_BOARD_TYPE == NUCLEO_BOARD)
+// Set Led Mode
+void SetLEDState(uint8_t mode);
+#define  SetLEDMode SetLEDState
 #endif
 
 #if _BOARD_TYPE == TELEM_BOARD
@@ -69,9 +81,13 @@ enum {
 // PA enable pin
 #define	PA_ENA_Pin			GPIO_PIN_7
 #define	PA_ENA_GPIO_Port	GPIOA
+
+// set LED mode
+void SetCommLEDMode(LEDCommand cmd, uint8_t mode);
+void SetLEDState(uint8_t mode);
+uint8_t GetLEDMode(void);
+void SetConnMode(BOOL mode);
+#define SetLEDMode(c) SetCommLEDMode(LED_CMD_RF, c)
 #endif
-
-void SetLEDMode(uint8_t mode);
-
 
 #endif /* INC_LED_H_ */

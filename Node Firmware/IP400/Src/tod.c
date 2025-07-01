@@ -78,3 +78,18 @@ BOOL  setTOD(char *todString)
 
 	return TRUE;
 }
+
+// get the elapsed time between two TOD and timestamp (in seconds)
+int getElapsed(TIMEOFDAY *time)
+{
+	// convert current tod to seconds
+	int todSecs = (tod.Hours*3600) + (tod.Minutes * 60) + tod.Seconds;
+	int timeSecs =  (time->Hours*3600) + (time->Minutes * 60) + time->Seconds;
+
+	// calculate diff: if negative add one day
+	int diff = todSecs - timeSecs;
+	if(diff < 0)
+		diff += 23*3600 + 59*60 + 59;
+
+	return diff;
+}

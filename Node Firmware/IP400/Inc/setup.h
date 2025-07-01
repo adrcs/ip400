@@ -31,6 +31,9 @@
 #define	__USE_SETUP_PARAMS	1				// set to 1 to use setup parameters
 #define	US					0				// station is in the US
 
+#define	MAX_DATAFLD			10				// max data field size
+#define	MAX_DESC			32				// description field
+
 // defined elsewhere
 extern char *modTypes[];
 extern char *paModes[];
@@ -38,10 +41,9 @@ extern char *paModes[];
 typedef struct setup_flags_t {
 	unsigned	fsk:	1;					// can run FSK
 	unsigned	ofdm:	1;					// can run OFDM
-	unsigned 	aredn:	1;					// is an AREDN node
+	unsigned 	AX25:	1;					// is using AX.25 compatibility addressing
 	unsigned	repeat:	1;					// repeat mode default
-	unsigned	ext:	1;					// use extended callsign
-	unsigned	rate:   3;					// data rate in use
+	unsigned	SSID:	4;					// AX.25 SSID
 } SETUP_FLAGS;
 
 // data rates in the flag field (FSK mode)
@@ -60,6 +62,7 @@ typedef struct setup_data_t {
 	SETUP_FLAGS		flags;					// flags
 	char			stnCall[MAX_CALL];		// station call sign
 	char			extCall[EXT_CALL];		// extended call sign
+	char			Description[MAX_DESC];	// description of my radio
 	char			latitude[10];			// latititude
 	char			longitude[10];			// longitude
 	char			gridSq[10];				// grid square
@@ -92,10 +95,12 @@ typedef struct stn_params_t {
 // beacon header
 typedef union {
 	struct beacon_hdr_t {
-		SETUP_FLAGS	flags;
-		uint8_t		txPower;
-		uint8_t		FirmwareMajor;
-		uint8_t		FirmwareMinor;
+		SETUP_FLAGS	flags;					// setup flags
+		uint8_t		txPower;				// transmit power
+		uint8_t		FirmwareMajor;			// firmware major version
+		uint8_t		FirmwareMinor;			// firmware minor version
+		uint32_t	txFrequency;			// transmit frequency
+		uint32_t	rxFrequency;			// receive frequency
 	} setup;
 	uint8_t		hdrBytes[sizeof(struct beacon_hdr_t)];
 } BEACON_HEADER;
@@ -135,5 +140,8 @@ BOOL UpdateSetup(void);
 // device ID
 uint32_t GetDevID0(void);
 uint32_t GetDevID1(void);
+// build ID
+char *getRevID(void);
+char *getDateID(void);
 
 #endif /* INC_SETUP_H_ */

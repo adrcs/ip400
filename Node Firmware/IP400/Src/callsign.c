@@ -122,9 +122,9 @@ uint8_t callEncode(char *callsign, uint16_t ipAddr, IP400_FRAME *frame, uint8_t 
 	p += offset;
 
 	if(dest == DEST_CALLSIGN)
-		frame->dest.ipbytes.encip = ipAddr;
+		frame->dest.vpnBytes.encvpn = ipAddr;
 	else
-		frame->source.ipbytes.encip = ipAddr;
+		frame->source.vpnBytes.encvpn  = ipAddr;
 
 	// broadcast address
 	if(!strcmp(callsign, "FFFF"))	{
@@ -189,7 +189,7 @@ BOOL callDecode(IP400_MAC *encCall, char *callsign, uint16_t *ipAddr)
 
 	*callsign = '\0';
 	if(ipAddr != NULL)
-		*ipAddr = encCall->ipbytes.encip;
+		*ipAddr = encCall->vpnBytes.encvpn;
 
 	return TRUE;
 }

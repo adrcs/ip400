@@ -53,6 +53,7 @@ IP400_FRAME *dequeFrame(FRAME_QUEUE *que);
 // queue management
 void insque (struct qelem *elem, struct qelem *pred);
 void remque (struct qelem *elem);
+BOOL quehasData(FRAME_QUEUE *que);
 
 // print memory stats
 void Print_Memory_Stats(void);

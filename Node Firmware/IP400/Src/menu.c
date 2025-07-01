@@ -31,6 +31,11 @@
 #include "tod.h"
 #include "config.h"
 #include "ip.h"
+#include "frame.h"
+
+//macros
+#define	tolower(c)		(c+0x20)
+#define	toupper(c)		(c-0x20)
 
 // menu state
 uint8_t menuState;		// menu state
@@ -91,6 +96,8 @@ char *selectItem = 	"Select an item->";
 static char menu[100];			// Buffer for file items
 int sel_item = 0;				// selected item
 uint8_t	activeMenu;				// active menu
+uint8_t editMode;				// current entry editing mode
+uint8_t	maxEntry;				// max entry length
 
 // forward refs in this module
 void printMenu(void);		// print the menu
@@ -103,6 +110,7 @@ void Print_Radio_errors(uint32_t errs);
 void Print_FSM_state(uint8_t state);
 uint8_t getEntry(int activeMenu, int item);
 uint8_t getKeyEntry(void);
+char editEntry(char c);
 
 // list of menus
 enum	{
@@ -119,6 +127,35 @@ enum	{
 	RET_PAUSE			// pause before leaving
 };
 
+// case values
+enum	{
+	ENTRY_ANYCASE,		// upper and lower case
+	ENTRY_UPPERCASE,	// upper case only
+	ENTRY_LOWERCASE,	// lower case only
+	ENTRY_NUMERIC,		// numeric only, 0-9 + '-'
+	ENTRY_FLOAT,		// floating point 0-9 + '.' + '-'
+	ENTRY_TIME,			// numeric + ':'
+	ENTRY_NONE			// none of the above
+};
+
+// keyboard entry constants
+
+// keys in entry mode
+#define	KEY_EOL			0x0D			// carriage return
+#define	KEY_ESC			0x1B			// escape key
+#define KEY_DEL			0x7F			// delete key
+#define	KEY_BKSP		0x08			// backspace key
+
+#define	MAX_ENTRY		40				// max entry chars
+#define	MAX_FLDSIZE		MAX_ENTRY-2		// max field size entry
+#define	MAX_DATASIZE	MAX_DATAFLD-2	// max data field size
+#define	MAX_FLOATSIZE	MAX_DATASIZE+1	// max float entry size
+#define	MAX_TIMESIZE	5				// max timesize
+
+BOOL delMode = FALSE;
+int pos = 0;
+char keyBuffer[MAX_ENTRY];
+
 /*
  * The first part of this code contains the menus and processing routines
  * handle the various menu options
@@ -130,13 +167,20 @@ uint8_t printAllSetup(void)
 	getTOD(&tod);
 	SOCKADDR_IN *ipAddr;
 
-	USART_Print_string("Current firmware is at %d.%d\r\n",def_params.params.FirmwareVerMajor,
-			def_params.params.FirmwareVerMinor);
+	strcpy(menu, getRevID());
+	menu[strlen(menu)-1] = '\0';
+	USART_Print_string("Firmware version: %d.%d, %s\r\n",def_params.params.FirmwareVerMajor,
+			def_params.params.FirmwareVerMinor, menu);
+
+	strcpy(menu, getDateID());
+	menu[strlen(menu)-1] = '\0';
+	USART_Print_string("Build %s\r\n", menu);
+
 	USART_Print_string("System time is %02d:%02d:%02d\r\n", tod.Hours, tod.Minutes, tod.Seconds);
 	USART_Print_string("Radio ID is %08x%08x\r\n", GetDevID0(), GetDevID1());
 
-	GetMyIP(&ipAddr);
-	USART_Print_string("IP Address %d.%d.%d.%d\r\n\n",ipAddr->sin_addr.S_un.S_un_b.s_b1, ipAddr->sin_addr.S_un.S_un_b.s_b2,
+	GetMyVPN(&ipAddr);
+	USART_Print_string("VPN Address %d.%d.%d.%d\r\n\n",ipAddr->sin_addr.S_un.S_un_b.s_b1, ipAddr->sin_addr.S_un.S_un_b.s_b2,
 			ipAddr->sin_addr.S_un.S_un_b.s_b3, ipAddr->sin_addr.S_un.S_un_b.s_b4);
 	printStationSetup();
 	printRadioSetup();
@@ -174,8 +218,15 @@ uint8_t showstats(void)
 {
 	Print_Frame_stats(GetFrameStats());
 	Print_Radio_errors(GetRadioStatus());
-	Print_FSM_state(GetFSMState());
+	Print_FSM_state((uint8_t )GetFSMState());
 	return RET_PAUSE;
+}
+
+// Send a beacon frame now...
+uint8_t sendBeacon(void)
+{
+	SendBeacon();
+	return RET_DONE;
 }
 
 // set the radio entry mode
@@ -253,6 +304,8 @@ struct menuItems_t {
 		char	*menuLine;			// text of menu line
 		char	selChar;			// character to select it
 		uint8_t	(*func)(void);		// processing function
+		uint8_t	entryMode;			// entry mode
+		uint8_t	fldSize;			// size of entry field
 };
 
 // main menu
@@ -268,53 +321,65 @@ struct menuItems_t {
 #define N_MEM		0
 #endif
 
-#define N_MAINMENU	(11+N_GPS+N_MEM)	// additional menu item for GPS
+#define N_MAINMENU	(12+N_GPS+N_MEM)	// additional menu item for GPS
 
 struct menuItems_t mainMenu[N_MAINMENU] = {
-		{ "List setup parameters\r\n", 'A', printAllSetup },
-		{ "Mesh Status\r\n", 'B', listMesh },
-		{ "Chat Mode\r\n", 'C', chatMode },
-		{ "Dump Frame stats\r\n", 'D', showstats },
+		{ "List setup parameters\r\n", 'A', printAllSetup, ENTRY_NONE, 0 },
+		{ "Mesh Status\r\n", 'B', listMesh, ENTRY_NONE, 0 },
+		{ "Chat/Echo Mode\r\n", 'C', chatMode, ENTRY_NONE, 0 },
+		{ "Dump Frame stats\r\n", 'D', showstats, ENTRY_NONE, 0 },
+		{ "Send Beacon\r\n", 'E', sendBeacon, ENTRY_NONE, 0 },
 #if __ENABLE_GPS
-		{ "GPS Echo mode\r\n", 'G', gpsEcho },
+		{ "GPS Echo mode\r\n", 'G', gpsEcho, ENTRY_NONE, 0 },
 #endif
-		{ "LED test\r\n", 'L', ledTest },
+		{ "LED test\r\n", 'L', ledTest, ENTRY_NONE, 0 },
 #if __MEM_DEBUG
-		{ "Memory Status\r\n", 'M', memStats },
+		{ "Memory Status\r\n", 'M', memStats, ENTRY_NONE, 0 },
 #endif
-		{ "Set Radio Parameters\r\n", 'R', setRadio },
-		{ "Set Station Parameters\r\n", 'S', setStation },
-		{ "Set clock (HH:MM)\r\n\n", 'T', setParam },
-		{ "Write Setup Values\r\n", 'W', writeSetup },
-		{ "Exit\r\n\n", 'X', exitMenu }
+		{ "Set Radio Parameters\r\n", 'R', setRadio, ENTRY_NONE, 0 },
+		{ "Set Station Parameters\r\n", 'S', setStation, ENTRY_NONE, 0 },
+		{ "Set clock (HH:MM)\r\n\n", 'T', setParam, ENTRY_TIME, MAX_TIMESIZE },
+		{ "Write Setup Values\r\n", 'W', writeSetup, ENTRY_NONE, 0 },
+		{ "Exit\r\n\n", 'X', exitMenu, ENTRY_NONE, 0 }
 };
 
 // radio menu
 #define N_RADIOMENU	8
 struct menuItems_t radioMenu[N_RADIOMENU] = {
-		{ "RF Frequency\r\n", 'A', setParam },
-		{ "Data Rate\r\n", 'B', setParam },
-		{ "Peak Deviation\r\n", 'C', setParam },
-		{ "Channel Filter BW\r\n", 'D', setParam },
-		{ "Output Power (dBm)\r\n", 'E', setParam },
-		{ "Rx Squelch (dBm)\r\n\n", 'F', setParam },
-		{ "List Settings\r\n", 'L', printRadSetup },
-		{ "Return to main menu\r\n\n", 'X', exitMenu }
+		{ "RF Frequency\r\n", 'A', setParam, ENTRY_FLOAT, MAX_FLDSIZE },
+		{ "Data Rate\r\n", 'B', setParam, ENTRY_FLOAT, MAX_FLDSIZE },
+		{ "Peak Deviation\r\n", 'C', setParam, ENTRY_FLOAT, MAX_FLDSIZE },
+		{ "Channel Filter BW\r\n", 'D', setParam, ENTRY_FLOAT, MAX_FLDSIZE },
+		{ "Output Power (dBm)\r\n", 'E', setParam, ENTRY_NUMERIC, MAX_FLDSIZE },
+		{ "Rx Squelch (dBm)\r\n\n", 'F', setParam, ENTRY_NUMERIC, MAX_FLDSIZE },
+		{ "List Settings\r\n", 'L', printRadSetup, ENTRY_NONE, MAX_FLDSIZE },
+		{ "Return to main menu\r\n\n", 'X', exitMenu, ENTRY_NONE, MAX_FLDSIZE }
 };
 
 // these need to correspond to the items above
 
 // station menu
-#define N_STATIONMENU	8
+#if __AX25_COMPATIBILITY
+#define	NAX25			2
+#else
+#define	NAX25			0
+#endif
+
+#define N_STATIONMENU	11+NAX25
 struct menuItems_t stationMenu[N_STATIONMENU] = {
-		{ "Callsign\r\n", 'A', setParam },
-		{ "Latitude\r\n", 'B', setParam },
-		{ "Longitude\r\n", 'C', setParam },
-		{ "Grid Square\r\n", 'D', setParam },
-		{ "Repeat Default\r\n", 'E', setParam },
-		{ "Beacon Interval\r\n\n", 'F', setParam },
-		{ "List Settings\r\n", 'L', printStnSetup },
-		{ "Return to main menu\r\n\n", 'X', exitMenu }
+		{ "Callsign\r\n", 'A', setParam, ENTRY_UPPERCASE, MAX_CALL },
+		{ "Description\r\n", 'B', setParam, ENTRY_ANYCASE, MAX_DESC },
+		{ "Latitude\r\n", 'C', setParam, ENTRY_FLOAT, MAX_FLOATSIZE },
+		{ "Longitude\r\n", 'D', setParam, ENTRY_FLOAT, MAX_FLOATSIZE },
+		{ "Grid Square\r\n", 'E', setParam, ENTRY_ANYCASE, MAX_CALL },
+		{ "Repeat Mode(Y/N)\r\n", 'F', setParam, ENTRY_UPPERCASE, 1 },
+		{ "Beacon Interval\r\n", 'G', setParam, ENTRY_NUMERIC, MAX_FLDSIZE },
+#if __AX25_COMPATIBILITY
+		{ "AX.25 Compatibility Mode(Y/N)\r\n", 'H', setParam, ENTRY_UPPERCASE, 1 },
+		{ "AX.25 SSID\r\n\n", 'I', setParam, ENTRY_NUMERIC, MAX_FLDSIZE },
+#endif
+		{ "List Settings\r\n", 'L', printStnSetup, ENTRY_NONE, 0 },
+		{ "Return to main menu\r\n\n", 'X', exitMenu, ENTRY_NONE, 0 }
 };
 
 // menu contents
@@ -387,6 +452,8 @@ void Menu_Task_Exec(void)
 	case MENU_SELECTED:
 		m=menuContents[activeMenu].menus;
 		m += sel_item;
+		editMode = m->entryMode;
+		maxEntry = m->fldSize;
 		switch((*m->func)()) {
 
 		case RET_MORE:
@@ -497,17 +564,6 @@ BOOL pause(void)
  * This part pertains to getting an entry and validating it..
  */
 
-// keys in entry mode
-#define	KEY_EOL			0x0D		// carriage return
-#define	KEY_ESC			0x1B		// escape key
-#define KEY_DEL			0x7F		// delete key
-#define	KEY_BKSP		0x08		// backspace key
-
-#define	MAX_ENTRY		40			// max entry chars
-
-BOOL delMode = FALSE;
-int pos = 0;
-char keyBuffer[MAX_ENTRY];
 
 // forward refs
 uint8_t validateEntry(int activeMenu, int item, char *keyBuffer);
@@ -519,6 +575,7 @@ uint8_t getKeyEntry(void)
 {
 
 	char c;
+	char edited;
 	int nBytesinBuff;
 
 	if((nBytesinBuff=databuffer_bytesInBuffer()) == 0)
@@ -531,14 +588,14 @@ uint8_t getKeyEntry(void)
 		if(delMode)	{
 			if((c != KEY_DEL) && (c != KEY_BKSP))	{
 				USART_Print_string("\\%c", c);
-				if(pos < MAX_ENTRY)
+				if(pos < maxEntry)
 					keyBuffer[pos++] = c;
 				delMode = FALSE;
 			} else {
 				if(pos > 0)	{
 					USART_Print_string("%c", keyBuffer[--pos]);
 				} else {
-					USART_Print_string("\\\r\n");
+					USART_Print_string("\\\r\n->");
 					delMode = FALSE;
 				}
 			}
@@ -562,19 +619,68 @@ uint8_t getKeyEntry(void)
 
 			case KEY_DEL:
 			case KEY_BKSP:
-				USART_Print_string("\\%c", keyBuffer[--pos]);
-				delMode = TRUE;
+				if(pos > 0)	{
+					USART_Print_string("\\%c", keyBuffer[--pos]);
+					delMode = TRUE;
+				} else {
+					delMode = FALSE;
+				}
+
 				break;
 
 			default:
-				USART_Send_Char(c);
-				if(pos < MAX_ENTRY)
-					keyBuffer[pos++] = c;
+				if((edited=editEntry(c)) != 0)	{
+					// don't echo the entry if it is over the field size
+					if(pos < maxEntry)	{
+						USART_Send_Char(edited);
+						keyBuffer[pos++] = edited;
+					}
+				}
 				break;
 			}
 		}
 	}
 	return RET_MORE;
+}
+
+/*
+ * edit an entry in progress
+ */
+char editEntry(char c)
+{
+	switch(editMode)	{
+
+	case ENTRY_ANYCASE:		// upper and lower case
+	case ENTRY_NONE:		// none of the above
+		return (c);
+
+	case ENTRY_UPPERCASE:	// upper case only
+		if(isLower(c))
+			return(toupper(c));
+		return c;
+
+	case ENTRY_LOWERCASE:	// lower case only
+		if(isUpper(c))
+			return(tolower(c));
+		return c;
+
+	case ENTRY_NUMERIC:		// numeric only, 0-9 + '-'
+		if(isNumeric(c) || (c=='-'))
+			return c;
+		return 0;
+
+	case ENTRY_FLOAT:		// floating point 0-9 + '.' + '-'
+		if(isNumeric(c) || (c=='-') || (c=='.'))
+			return c;
+		return 0;
+
+	case ENTRY_TIME:		// numeric + ':'
+		if(isNumeric(c) || (c==':'))
+			return c;
+		return 0;
+
+	}
+	return c;
 }
 
 /*
@@ -613,18 +719,20 @@ uint8_t getEntry(int activeMenu, int item)
 
 // data types we are updating
 enum {
+	uint4_lo,		// uint4 lsb
+	uint4_hi,		// uint4 msb
 	uint8_type,		// uint8 field
 	int16_type,		// int16 field
 	uint32_type,	// uint32 field
 	float_type,		// floating point
 	char_type,		// character type
-	field_type		// field type
+	yesno_type		// yes/no type
 };
 
 // struct to hold validation values
 typedef struct field_validator_t {
-	int			MinVal;				// minimum value
-	int			MaxVal;				// maximum value
+	int			MinVal;				// minimum value or string length
+	int			MaxVal;				// maximum value or string length
 	void    	*setupVal;			// pointer to setup value
 	int			type;				// type of entry
 	uint32_t	scalar;				// scalar to convert to decimal
@@ -641,12 +749,15 @@ FIELD_VALIDATOR radioValidators[] = {
 };
 
 FIELD_VALIDATOR stationValidators[] = {
-		{ 4, 6, &setup_memory.params.setup_data.stnCall, char_type, 0 },
+		{ 4, MAX_CALL, &setup_memory.params.setup_data.stnCall, char_type, 0 },
+		{ 1, MAX_DESC, &setup_memory.params.setup_data.Description, char_type, 0 },
 		{ 2, 14, &setup_memory.params.setup_data.latitude, char_type, 0 },
 		{ 2, 14, &setup_memory.params.setup_data.longitude, char_type, 0 },
-		{ 6, 6, &setup_memory.params.setup_data.gridSq, char_type, 0 },
-		{ 0, 0x8, &setup_memory.params.setup_data.flags, field_type, 0 },
-		{ 1, 100, &setup_memory.params.setup_data.beaconInt, int16_type, 0 }
+		{ 4, 6, &setup_memory.params.setup_data.gridSq, char_type, 0 },
+		{ 0x8, 0, &setup_memory.params.setup_data.flags, yesno_type, 0 },
+		{ 1, 100, &setup_memory.params.setup_data.beaconInt, int16_type, 0 },
+		{ 0x4, 0, &setup_memory.params.setup_data.flags, yesno_type, 0 },
+		{ 0, 15, &setup_memory.params.setup_data.flags, uint4_hi, 0 }
 };
 
 uint8_t validateEntry(int activeMenu, int item, char *keyBuffer)
@@ -664,13 +775,14 @@ uint8_t validateEntry(int activeMenu, int item, char *keyBuffer)
 	case RADIO_MENU:
 		// convert a floating point entry to the required decimal
 		if(isfloat(keyBuffer))
-				newValue = (int)(ascii2double(keyBuffer)*radioValidators[item].scalar);
+			newValue = (int)(ascii2double(keyBuffer)*radioValidators[item].scalar);
 		else 	newValue = ascii2Dec(keyBuffer);
 		max = radioValidators[item].MaxVal;
 		min = radioValidators[item].MinVal;
 		if((newValue<min) || (newValue>max))	{
 			USART_Print_string("Must be in the range of %d to %d\r\n", min, max);
-				return RET_PAUSE;
+			USART_Print_string("Field not updated\r\n");
+			return RET_PAUSE;
 		}
 		switch(radioValidators[item].type){
 
@@ -695,13 +807,26 @@ uint8_t validateEntry(int activeMenu, int item, char *keyBuffer)
 		case STATION_MENU:
 			switch(stationValidators[item].type){
 
+			case uint4_lo:
+				newValue = ascii2Dec(keyBuffer);
+				uint8_t *v4lo = (uint8_t *)stationValidators[item].setupVal;
+				*v4lo = (*v4lo & 0xF0) | (newValue & 0x0F);
+				break;
+
+			case uint4_hi:
+				newValue = ascii2Dec(keyBuffer);
+				uint8_t *v4hi = (uint8_t *)stationValidators[item].setupVal;
+				*v4hi = (*v4hi & 0x0F) | (newValue<<4);
+				break;
+
 			case int16_type:
 				newValue = ascii2Dec(keyBuffer);
 				max = stationValidators[item].MaxVal;
 				min = stationValidators[item].MinVal;
 				if((newValue<min) || (newValue>max))	{
 					USART_Print_string("Must be in the range of %d to %d\r\n", min, max);
-						return RET_PAUSE;
+					USART_Print_string("Field not updated\r\n");
+					return RET_PAUSE;
 				}
 				uint16_t *v8 = (uint16_t *)stationValidators[item].setupVal;
 				*v8 = (uint16_t)newValue;
@@ -713,22 +838,27 @@ uint8_t validateEntry(int activeMenu, int item, char *keyBuffer)
 				min = stationValidators[item].MinVal;
 				if((len<min) || (len>max))	{
 					USART_Print_string("String must be %d to %d in length\r\n", min, max);
-						return RET_PAUSE;
+					USART_Print_string("Field not updated\r\n");
+					return RET_PAUSE;
 				}
 				strcpy((char *)stationValidators[item].setupVal, keyBuffer);
 				break;
 
-			case field_type:
-				uint8_t val = keyBuffer[0] == 'T' ? 1 : 0;
-				uint8_t *f8= (uint8_t *)stationValidators[item].setupVal;
-				if(val)
-					*f8 |= (uint8_t)stationValidators[item].MinVal;
-				else
-					*f8 &= (uint8_t)stationValidators[item].MinVal;
-				break;
+			case yesno_type:
+				if((keyBuffer[0] == 'Y') || (keyBuffer[0] == 'N'))	{
+					uint8_t val = keyBuffer[0] == 'Y' ? 1 : 0;
+					uint8_t *f8= (uint8_t *)stationValidators[item].setupVal;
+					if(val)
+						*f8 |= (uint8_t)stationValidators[item].MinVal;
+					else
+						*f8 &= ~((uint8_t)stationValidators[item].MinVal);
+				} else {
+					USART_Print_string("Please enter Y or N\r\n");
+					USART_Print_string("Field not updated\r\n");
+					return RET_PAUSE;
+				}
 			}
 			break;
-
 	}
 
 	// falls to here when done...
@@ -795,15 +925,15 @@ char *fsm_states[FSM_N_FSM_STATES] = {
 		"Synth setup",
 		"VCO calibration",
 		"Lock Rx and Rx",
-		"Llock on Rx",
+		"Lock on Rx",
 		"Enable PA",
 		"Transmit",
 		"Analog power down",
 		"End transmit",
-		"lock on Rx",
+		"Lock on Rx",
 		"Enable Rx",
 		"Enable LNA",
-		"Recieve",
+		"Receive",
 		"End rx",
 		"Synth power down"
 };

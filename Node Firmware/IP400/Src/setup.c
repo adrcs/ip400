@@ -16,7 +16,7 @@
 				    Copyright (c) Alberta Digital Radio Communications Society
 				    All rights reserved.
 
-	Revision History:
+	Revision History: Revised to Rev 34
 
 ---------------------------------------------------------------------------*/
 #include <stdlib.h>
@@ -37,13 +37,17 @@
 #define FLASH_PAGE_NUM		127
 static FLASH_EraseInitTypeDef EraseInitStruct;
 
+// current build number
+char *revID = "$Revision: 37 $";
+char *dateID = "$Date: 2025-06-30 20:36:27 -0600 (Mon, 30 Jun 2025) $";
+
 /*
  * Default setup parameters
  */
 SETUP_MEMORY setup_memory;
 
 SETUP_MEMORY def_params = {
-		.params.setup_data.flags = { 1, 0, 0 , 1, 0, FSK_100K },		// LSB specified first
+		.params.setup_data.flags = { 1, 0, 0 , 1, 0 },		// LSB specified first
 		.params.setup_data.stnCall ="NOCALL",
 		.params.setup_data.gridSq = "DO21vd",
 		.params.setup_data.latitude = "51.08",
@@ -60,8 +64,8 @@ SETUP_MEMORY def_params = {
 		.params.radio_setup.PADrvMode = PA_DRV_TX_HP,
 		.params.radio_setup.rxSquelch = -95,
 		//
-		.params.FirmwareVerMajor = 1,			// current rev is 1.1
-		.params.FirmwareVerMinor = 1,
+		.params.FirmwareVerMajor = 1,			// current rev is 1.3
+		.params.FirmwareVerMinor = 3,
 		.params.Magic = SETUP_MAGIC,
 		.params.SetupCRC = 0
 };
@@ -120,26 +124,31 @@ BOOL CompareToMyCall(char *call)
  */
 void printStationSetup(void)
 {
-	// station callsign first
+	// station callsigns first
 	USART_Print_string("Station Callsign->%s\r\n", setup_memory.params.setup_data.stnCall);
-	if(setup_memory.params.setup_data.flags.ext)
-		USART_Print_string("Extended Callsign->%s\r\n");
+	if(setup_memory.params.setup_data.flags.AX25)		{
+		USART_Print_string("AX.25 Address SSID: %s-%d\r\n", setup_memory.params.setup_data.stnCall,
+				setup_memory.params.setup_data.flags.SSID);
+	} else	{
+		USART_Print_string("AX.25 Compatibility Not Enabled\r\n");
+	}
+	USART_Print_string("Description->%s\r\n\n", setup_memory.params.setup_data.Description);
 
+	// station location
 	USART_Print_string("Latitude->%s\r\n", setup_memory.params.setup_data.latitude);
 	USART_Print_string("Longitude->%s\r\n", setup_memory.params.setup_data.longitude);
 	USART_Print_string("Grid Square->%s\r\n", setup_memory.params.setup_data.gridSq);
-
 	USART_Print_string("Capabilities->");
 	if(setup_memory.params.setup_data.flags.fsk)
 		USART_Print_string("FSK ");
 	if(setup_memory.params.setup_data.flags.ofdm)
 		USART_Print_string("OFDM ");
-	if(setup_memory.params.setup_data.flags.aredn)
-		USART_Print_string("AREDN ");
+	if(setup_memory.params.setup_data.flags.AX25)
+		USART_Print_string("AX.25 ");
 	if(setup_memory.params.setup_data.flags.repeat)
-		USART_Print_string("\r\nRepeat mode on by default\r\n");
+		USART_Print_string("\r\nRepeat mode on\r\n");
 	else
-		USART_Print_string("\r\nRepeat mode off by default\r\n");
+		USART_Print_string("\r\nRepeat mode off\r\n");
 	USART_Print_string("Beacon Interval->%d mins\r\n\n", setup_memory.params.setup_data.beaconInt);
 }
 
@@ -172,7 +181,7 @@ void printRadioSetup(void)
 /*
  * Manage the IP address
  */
- void GetMyIP(SOCKADDR_IN **ipAddr)
+ void GetMyVPN(SOCKADDR_IN **ipAddr)
  {
 	 *ipAddr = &myIP;
  }
@@ -183,7 +192,7 @@ void printRadioSetup(void)
  }
 
  // set my IP Address
- void SetMyIP(void)
+ void SetMyVPNAddr(void)
  {
 	 char paddedCall[20];
 	 strncpy(paddedCall, setup_memory.params.setup_data.stnCall, MAX_CALL);
@@ -192,8 +201,8 @@ void printRadioSetup(void)
 	 // encode my callsign
 	 EncodeChunk(paddedCall, MAX_CALL, &myMAC.callbytes.encoded);
 
-	 myMAC.ipbytes.encip = GetIPLowerWord();
-	 GetIPAddrFromMAC(&myMAC, &myIP);
+	 myMAC.vpnBytes.encvpn = GetVPNLowerWord();
+	 GetVPNAddrFromMAC(&myMAC, &myIP);
  }
 
 /*
@@ -260,7 +269,7 @@ BOOL ReadSetup(void)
 	    memAddr += sizeof(uint32_t);
 	}
 
-	SetMyIP();
+	SetMyVPNAddr();
 
 	return TRUE;
 }
@@ -274,6 +283,7 @@ HAL_StatusTypeDef WriteSetup(void)
 	__HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_ALL_ERRORS);
 
 	// erase it first
+	USART_Print_string("Erasing...");
 	EraseInitStruct.TypeErase   = FLASH_TYPEERASE_PAGES;
 	EraseInitStruct.Page        = FLASH_PAGE_NUM;
 	EraseInitStruct.NbPages     = 1;
@@ -284,6 +294,7 @@ HAL_StatusTypeDef WriteSetup(void)
 	for(int i=0;i<1000;i++);
 
 	// now write
+	USART_Print_string("Writing...");
 	uint32_t memAddr = FLASH_PAGE_ADDR;
 	uint32_t *src_addr = setup_memory.flashwords;
 	uint16_t nwords = sizeof(SETUP_MEMORY)/sizeof(uint32_t);
@@ -295,8 +306,22 @@ HAL_StatusTypeDef WriteSetup(void)
 	    if ((status=HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, memAddr, data32)) != HAL_OK)
 	    	return status;
 	    memAddr += sizeof(uint32_t);
+		USART_Print_string("%02d..", nwords);
 	}
 	return status;
+}
+
+/*
+ * build related stuff
+ */
+char *getRevID(void)
+{
+	return &revID[1];
+}
+
+char *getDateID(void)
+{
+	return &dateID[1];
 }
 
 

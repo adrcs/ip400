@@ -249,10 +249,10 @@ void SPI_Task_Exec(void)
 
 		// copy the address fields
 		memcpy(&spiTxBuffer.spiData.hdr.fromCall, txFrame->source.callbytes.bytes, N_CALL);
-		memcpy(&spiTxBuffer.spiData.hdr.fromIP, txFrame->source.ipbytes.ip, N_IPBYTES);
+		memcpy(&spiTxBuffer.spiData.hdr.fromIP, txFrame->source.vpnBytes.vpn, N_IPBYTES);
 
 		memcpy(spiTxBuffer.spiData.hdr.toCall, txFrame->dest.callbytes.bytes, N_CALL);
-		memcpy(&spiTxBuffer.spiData.hdr.toIP, txFrame->dest.ipbytes.ip, N_IPBYTES);
+		memcpy(&spiTxBuffer.spiData.hdr.toIP, txFrame->dest.vpnBytes.vpn, N_IPBYTES);
 
 		// flag fields
 		spiTxBuffer.spiData.hdr.coding = txFrame->flagfld.flags.coding;

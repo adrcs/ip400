@@ -24,7 +24,53 @@
 #include "types.h"
 #include "utils.h"
 
-// ascii to decimal
+/*
+ * Unsigned conversion routines
+ */
+// convert an ascii string to a uint8
+uint8_t A2_uint8_t(char *s)
+{
+    uint8_t val = 0, newval;
+
+    while(*s)   {
+        newval = (uint8_t)(val << 3);              //*8
+        newval += val << 1;             //*2 + *8  = *10
+        val = newval + (*s++ - '0');    // *10 + new value
+    }
+    return val;
+}
+
+// convert an ascii string to a uint16
+uint16_t A2_uint16_t(char *s)
+{
+    uint16_t val = 0, newval;
+
+    while(*s)   {
+        newval = val << 3;              //*8
+        newval += val << 1;             //*2 + *8  = *10
+        val = newval + (*s++ - '0');    // *10 + new value
+    }
+    return val;
+}
+
+// convert an ascii string to a uint32
+// same code, wider int
+uint32_t A2_uint32_t(char *s)
+{
+    uint32_t val = 0, newval;
+
+    while(*s)   {
+        newval = val << 3;              //*8
+        newval += val << 1;             //*2 + *8  = *10
+        val = newval + (*s++ - '0');    // *10 + new value
+    }
+    return val;
+}
+
+/*
+ * Signed integer conversion
+ */
+// ascii to signed decimal
 int ascii2Dec(char *dec)
 {
 	int retval = 0;
@@ -63,10 +109,33 @@ BOOL isfloat(char *val)
 	return 0U;
 }
 
-// convert an ascii string to a double
-// until we encounter the decimal place, treat it the same as an integer.
-// after that, scale each digit down appropriately
-//
+// is an upper case character
+BOOL isUpper(char c)
+{
+	if((c >= 'A') && (c <= 'Z'))
+		return 1U;
+	return 0U;
+}
+
+// is lower case
+BOOL isLower(char c)
+{
+	if((c >= 'a') && (c <= 'z'))
+		return 1U;
+	return 0U;
+}
+
+// is numeric
+BOOL isNumeric(char c)
+{
+	if((c >= '0') && (c <= '9'))
+		return 1U;
+	return 0U;
+}
+
+/*
+ * signed double conversion
+ */
 double ascii2double(char *val)
 {
 	double retval = 0;
@@ -100,6 +169,9 @@ double ascii2double(char *val)
 	return retval * sgn;
 }
 
+/*
+ * String manipulation
+ */
 // Your basic linux-stle (argv, argc) parser based on delimiters
 // string is destroyed
 int explode_string(char *str, char *strp[], int limit, char delim, char quote)

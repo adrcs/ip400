@@ -64,3 +64,14 @@ IP400_FRAME *dequeFrame(FRAME_QUEUE *que)
 	free(f);
 	return ipFrame;
 }
+
+/*
+ * Test to see if anything is queued
+ */
+BOOL quehasData(FRAME_QUEUE *que)
+{
+	if(que->q_back == que)
+		return FALSE;
+
+	return TRUE;
+}

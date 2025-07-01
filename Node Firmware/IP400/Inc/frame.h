@@ -38,13 +38,6 @@
 
 #define	MAX_HOP_COUNT		15			// max hop count
 
-// transmit states
-enum	{
-		TX_IDLE=0,		// idle - waiting for work
-		TX_SENDING,		// sending a frame
-		TX_DONE			// done
-};
-
 // radio error register
 #define	SEQ_COMPLETE_ERR	0x8000		// Sequencer error
 #define	SEQ_ACT_TIMEOUT		0x4000		// Sequencer action timeout
@@ -56,7 +49,7 @@ enum	{
 #define	N_RADIO_ERRS		7			// number of the above
 
 // radio FSM states
-enum 	fsm_states_e {
+typedef enum 	fsm_states_e {
 		FSM_IDLE=0,				// idle
 		FSM_ENA_RF_REG,			// enable RF registers
 		FSM_WAIT_ACTIVE2,		// wait for active 2
@@ -77,7 +70,7 @@ enum 	fsm_states_e {
 		FSM_END_RX,				// end rx
 		FSM_SYNTH_PWDN,			// synth power down
 		FSM_N_FSM_STATES
-};
+} SubGFSMState;
 
 // header flags
 typedef struct frame_flags_t {
@@ -99,9 +92,13 @@ typedef	struct ip400_mac_t	{
 		uint32_t	encoded;
 	} callbytes;
 	union {
-		uint8_t		ip[N_IPBYTES];
-		uint16_t	encip;			// encoded IP data
-	} ipbytes;
+		uint8_t		vpn[N_IPBYTES];
+		struct	{
+			uint8_t	ax25Marker;		// marker byte
+			uint8_t ax25SSID;		// SSID
+		} AX25;
+		uint16_t	encvpn;			// encoded vpn address
+	} vpnBytes;
 } IP400_MAC;
 
 // hop table
@@ -117,9 +114,9 @@ typedef struct ip400_frame_t	{
 		IP400_FLAGS	flags;			// flag bit field
 		uint16_t	allflags;		// all flags
 	} flagfld;
+	uint16_t	length;				// data length
 	uint32_t	seqNum;				// packet sequence number
 	void 		*buf;				// data to send
-	uint16_t	length;				// data length
 	void		*hopTable;			// hop table address
 } IP400_FRAME;
 
@@ -147,8 +144,8 @@ typedef enum {
 		P25_FRAME,				// TIA project 25
 		NXDN_FRAME,				// NXDN
 		M17_FRAME,				// M17
-		TBD_1,
-		TBD_2,
+		ECHO_REQUEST,			// echo request frame
+		ECHO_RESPONSE,			// echo response frame
 		LOCAL_COMMAND			// local command frame
 } IP400FrameType;
 
@@ -188,7 +185,9 @@ typedef struct frame_stats_t {
 	uint32_t		nRepeated;					// repeated frames
 } FRAME_STATS;
 
+// links in
 uint8_t getFrameStatus(void);
+void SendBeacon(void);
 
 // references
 uint8_t callEncode(char *callsign, uint16_t port, IP400_FRAME *frame, uint8_t dest, uint8_t offset);
@@ -196,15 +195,27 @@ BOOL callDecode(IP400_MAC *encCall, char *callsign, uint16_t *port);
 void EncodeChunk(char *src, int len, uint32_t *enc);
 
 // frame senders
+BOOL SendBeaconFrame(uint8_t *payload, int bcnlen);
 BOOL SendTextFrame(char *srcCall, uint16_t srcPort, char *destCall, uint16_t dstPort, char *buf, uint16_t length, BOOL repeat);
-void SendBeaconFrame(char *srcCall, uint8_t *payload, int bcnlen);
+BOOL SendDataFrame(char *srcCall, uint16_t srcIPAddr, char *destCall, uint16_t dstIPAddr, uint8_t *buf, uint16_t length, uint8_t coding, BOOL repeat);
+BOOL SendEchoReqFrame(char *srcCall, uint16_t srcIPAddr, char *destCall, uint16_t dstIPAddr, char *buf, uint16_t length, BOOL repeat);
+//
 void SendSPIFrame(void *spiHdr, uint8_t *payload, int len);
 //
 BOOL EnqueChatFrame(void *Frame);				// queue a chat frame
 FRAME_STATS *GetFrameStats(void);				// return the frame stats
 uint32_t GetRadioStatus(void);					// get the radio status
-uint8_t GetFSMState(void);						// get FSM state
+SubGFSMState GetFSMState(void);					// get FSM state
 //
 uint8_t getFrameStatus(void);					// get the frame status
+BOOL FrameisMine(IP400_FRAME *frame);
+void RepeatFrame(IP400_FRAME *frame);
+void ProcessRxFrame(IP400_FRAME *rframe, int rawLength);
+void QueueTxFrame(IP400_FRAME *txframe);
+
+// lookup a frame in the mesh table
+int getNMeshEntries(char *dest_call, int len);
+IP400_MAC *getMeshEntry(char *dest_call, int len);
+IP400_MAC *getNextEntry(char *dest_call, int len);
 
 #endif /* FRAME_H_ */

@@ -27,21 +27,21 @@
  * 				Red solid when HAL error or NMI occurred
  *
  * On the NUCLEO board, there are three, red, green and blue
- * BLUE (LD1)	Duplicats the TX LED
+ * BLUE (LD1)	Duplicates the TX LED
  * GREEN (LD2)	Duplicates the GREEN bi-color function
  * RED (LD3)	Duplicates the RED Bi-color function
  */
 
+#include <config.h>
 #include "types.h"
 #include "led.h"
 #include "usart.h"
-#include <config.h>
+
 
 // include LED defs from the right place
 #if _BOARD_TYPE == NUCLEO_BOARD
 #include <stm32wl3x_nucleo.h>
 #endif
-
 
 // local defines
 #define	FLASH_OFF		0				// LED flashing: off state
@@ -52,11 +52,10 @@
 #define	TEST_TIMER		20				// test timer
 
 // internals
-void SetLEDMode(uint8_t mode);
+void SetLEDState(uint8_t mode);
 void LED_SetOff(void);
 void LED_SetRed(void);
 void LED_SetGreen(void);
-void LED_SetError(void);
 void setTxLED(BOOL state);
 
 // vars
@@ -80,11 +79,19 @@ struct led_tests_t {
 	char *testName;
 	uint8_t testMode;
 } LEDTests[N_LED] = {
+#if _BOARD_TYPE == NUCLEO_BOARD
+		{"RED On", BICOLOR_RED },
+		{"GREEN On", BICOLOR_GREEN },
+		{"GREEN only", BICOLOR_OFF },
+		{"BLUE On", TX_LED_ON },
+		{"BLUE Off", TX_LED_OFF }
+#else
 		{"Bicolor RED On", BICOLOR_RED },
 		{"Bicolor GREEN On", BICOLOR_GREEN },
 		{"Bicolor off", BICOLOR_OFF },
 		{"Tx LED On", TX_LED_ON },
 		{"Tx LED Off", TX_LED_OFF }
+#endif
 };
 // Initialization
 void Led_Task_Init(void)
@@ -149,12 +156,12 @@ BOOL LedTest(void)
 			saveMode = ledMode;
 		if(testNum == N_LED)	{
 			testNum = 0;
-			SetLEDMode(saveMode);
+			SetLEDState(saveMode);
 			return TRUE;
 		}
 
 		USART_Print_string("%s\r\n", LEDTests[testNum].testName);
-		SetLEDMode(LEDTests[testNum].testMode);
+		SetLEDState(LEDTests[testNum].testMode);
 		testTimer =  TEST_TIMER;
 		testNum++;
 		return FALSE;
@@ -164,8 +171,14 @@ BOOL LedTest(void)
 	return FALSE;
 }
 
-// API routines: set the LED mode
-void SetLEDMode(uint8_t mode)
+// API routine: get the LED mode
+uint8_t GetLEDMode()
+{
+	return ledMode;
+}
+
+// API routines: set the LED state for nodes only
+void SetLEDState(uint8_t mode)
 {
 	ledMode = mode;
 
