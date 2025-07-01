@@ -1,9 +1,6 @@
 # Node Firmware
-This directory contains the code sources. The current source code is at Rev level 1.1.
+This directory contains the code sources. The current source code is at Rev level 1.3.
 
-Due to a new release of CubeIDE, the platform code is out of date and has been temporarily removed until
-a new release is ready, which is imminent.
-
-If you need a copy rignt away, please email me  VE6VH at ve6vh dot org
-
+The two Cube IDE projects are for the Nucleo CC2 board as well as the Pi Zero module. The IP400 code directory
+is common to both.
 
