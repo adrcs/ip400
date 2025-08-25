@@ -57,7 +57,7 @@ enum	{
 
 // menu items
 #define	NO_ITEM			-1			// no item selected
-#define	__MEM_DEBUG		1			// memory debug
+#define	MENU_REPAINT	-2			// repaint the menu
 
 // DEC VT100 Escape sequences
 #define ASCII_TAB		0x09
@@ -111,12 +111,15 @@ void Print_FSM_state(uint8_t state);
 uint8_t getEntry(int activeMenu, int item);
 uint8_t getKeyEntry(void);
 char editEntry(char c);
+void sendTextString(char *string);
+void printValidator(int activeMenu, int item);
 
 // list of menus
 enum	{
 	MAIN_MENU=0,		// main menu
 	RADIO_MENU,			// radio params menu
 	STATION_MENU,		// Station params menu
+	DIAGNOSTIC_MENU,	// diagnostics menu
 	N_MENUS				// number of menus
 };
 
@@ -127,6 +130,9 @@ enum	{
 	RET_PAUSE			// pause before leaving
 };
 
+/*
+ * Definitions for data entry
+ */
 // case values
 enum	{
 	ENTRY_ANYCASE,		// upper and lower case
@@ -138,8 +144,25 @@ enum	{
 	ENTRY_NONE			// none of the above
 };
 
-// keyboard entry constants
-
+// data types we are updating
+enum {
+	uint4_lo,		// uint4 lsb
+	uint4_hi,		// uint4 msb
+	uint8_type,		// uint8 field
+	int16_type,		// int16 field
+	uint32_type,	// uint32 field
+	float_type,		// floating point
+	char_type,		// character type
+	yesno_type		// yes/no type
+};
+// struct to hold validation values
+typedef struct field_validator_t {
+	int			MinVal;				// minimum value or string length
+	int			MaxVal;				// maximum value or string length
+	void    	*setupVal;			// pointer to setup value
+	int			type;				// type of entry
+	uint32_t	scalar;				// scalar to convert to decimal
+} FIELD_VALIDATOR;
 // keys in entry mode
 #define	KEY_EOL			0x0D			// carriage return
 #define	KEY_ESC			0x1B			// escape key
@@ -157,10 +180,31 @@ int pos = 0;
 char keyBuffer[MAX_ENTRY];
 
 /*
- * The first part of this code contains the menus and processing routines
+ * The first part of this code contains the menus and executor routines
  * handle the various menu options
  * return TRUE if done, else FALSE
  */
+
+/*
+ * executors common to all menu items
+ */
+// exit the current menu
+uint8_t exitMenu(void)
+{
+	activeMenu = MAIN_MENU;
+	menuState = MENU_OFF;
+	return RET_DONE;
+}
+// set a parameter value
+uint8_t setParam(void)
+{
+	return(getEntry(activeMenu, sel_item));
+}
+
+/*
+ * Main menu items
+ */
+// A: print all setup
 uint8_t printAllSetup(void)
 {
 	TIMEOFDAY tod;
@@ -186,72 +230,47 @@ uint8_t printAllSetup(void)
 	printRadioSetup();
 	return RET_PAUSE;
 }
-//
-uint8_t printStnSetup(void)
-{
-	printStationSetup();
-	return RET_PAUSE;
-}
-//
-uint8_t printRadSetup(void)
-{
-	printRadioSetup();
-	return RET_PAUSE;
-}
-// list mesh status
+// B: list mesh status
 uint8_t listMesh(void)
 {
 	Mesh_ListStatus();
 	return RET_PAUSE;
 }
-
-// enter chat mode
+// C: enter chat mode
 uint8_t chatMode(void)
 {
 	if(Chat_Task_exec())
 		return RET_PAUSE;
 	return RET_MORE;
 }
-
-// dump the rx stats
-uint8_t showstats(void)
+// D: set the diagnostic mode
+uint8_t setDiagnostics(void)
 {
-	Print_Frame_stats(GetFrameStats());
-	Print_Radio_errors(GetRadioStatus());
-	Print_FSM_state((uint8_t )GetFSMState());
-	return RET_PAUSE;
+	activeMenu = DIAGNOSTIC_MENU;
+	menuState = MENU_OFF;
+	return RET_DONE;
 }
-
-// Send a beacon frame now...
+// E: Send a beacon frame
 uint8_t sendBeacon(void)
 {
 	SendBeacon();
 	return RET_DONE;
 }
-
-// set the radio entry mode
+// R: set the radio entry mode
 uint8_t setRadio(void)
 {
 	activeMenu = RADIO_MENU;
 	menuState = MENU_OFF;
 	return RET_DONE;
 }
-
-// set the station entry mode
+// S: set the station entry mode
 uint8_t setStation(void)
 {
 	activeMenu = STATION_MENU;
 	menuState = MENU_OFF;
 	return RET_DONE;
 }
-// enter chat mode
-uint8_t ledTest(void)
-{
-	if(LedTest())
-		return RET_PAUSE;
-	return RET_MORE;
-}
-// write the flash memory
+// W: write the flash memory
 uint8_t writeSetup(void)
 {
 	if(!UpdateSetup())	{
@@ -262,38 +281,91 @@ uint8_t writeSetup(void)
 	menuState = MENU_OFF;
 	return RET_PAUSE;
 }
-// exit the current menu
-uint8_t exitMenu(void)
+
+/*
+ * radio menu items (most are handled by setParam)
+ */
+// L: print radio setup
+uint8_t printRadSetup(void)
 {
-	activeMenu = MAIN_MENU;
-	menuState = MENU_OFF;
-	return RET_DONE;
+	printRadioSetup();
+	return RET_PAUSE;
 }
-// set a parameter value
-uint8_t setParam(void)
+// P: apply settigns now
+uint8_t applySettings(void)
 {
-	return(getEntry(activeMenu, sel_item));
+	RadioSetup();
+	return RET_PAUSE;
 }
 /*
- * These are conditional
+ * Station menu items (most are also handle by setParam)
  */
-#if __ENABLE_GPS
+// L: print station setup
+uint8_t printStnSetup(void)
+{
+	printStationSetup();
+	return RET_PAUSE;
+}
+
+/*
+ * Diagnostics menu items
+ */
+// D: dump radio stats
+uint8_t showstats(void)
+{
+	Print_Frame_stats(GetFrameStats());
+	Print_Radio_errors(GetRadioStatus());
+	Print_FSM_state((uint8_t )GetFSMState());
+	return RET_PAUSE;
+}
+// G: GPS Echo mode
 uint8_t gpsEcho(void)
 {
+#if __ENABLE_GPS
 	GPSEcho();
+#endif
 	return(getKeyEntry());
 }
-#endif
-#if __MEM_DEBUG
-// memory statistics
+// L: Led Test
+uint8_t ledTest(void)
+{
+	if(LedTest())
+		return RET_PAUSE;
+	return RET_MORE;
+}
+// M: memory status
 uint8_t memStats(void)
 {
 	Print_Memory_Stats();
 	return RET_PAUSE;
 }
-#endif
-
-
+// P: Set PRBS diag mode
+uint8_t prbsMode(void)
+{
+	setSubgTestMode(SUBG_TEST_PRBS);
+	sendTextString("PRBS test mode enabled\r\n");
+	return RET_PAUSE;
+}
+// T: Set CW mode
+uint8_t cwMode(void)
+{
+	setSubgTestMode(SUBG_TEST_CW);
+	sendTextString("CW test mode enabled\r\n");
+	return RET_PAUSE;
+}
+// X: Test mode off
+uint8_t testOff(void)
+{
+	setSubgTestMode(SUBG_TEST_OFF);
+	sendTextString("Test mode off\r\n");
+	return RET_PAUSE;
+}
+// Z: exit diag mode: turn test modes off
+uint8_t exitdiagMenu(void)
+{
+	setSubgTestMode(SUBG_TEST_OFF);
+	return exitMenu();
+}
 /*
  * main menu definition
  * 1) define the number of line items
@@ -307,56 +379,49 @@ struct menuItems_t {
 		uint8_t	entryMode;			// entry mode
 		uint8_t	fldSize;			// size of entry field
 };
-
-// main menu
-#if __ENABLE_GPS
-#define N_GPS		1			// additional menu item for GPS
-#else
-#define N_GPS		0
-#endif
-
-#if __MEM_DEBUG
-#define N_MEM		1			// additional menu item for memory
-#else
-#define N_MEM		0
-#endif
-
-#define N_MAINMENU	(12+N_GPS+N_MEM)	// additional menu item for GPS
-
+//
+#define N_MAINMENU	9
 struct menuItems_t mainMenu[N_MAINMENU] = {
 		{ "List setup parameters\r\n", 'A', printAllSetup, ENTRY_NONE, 0 },
 		{ "Mesh Status\r\n", 'B', listMesh, ENTRY_NONE, 0 },
 		{ "Chat/Echo Mode\r\n", 'C', chatMode, ENTRY_NONE, 0 },
-		{ "Dump Frame stats\r\n", 'D', showstats, ENTRY_NONE, 0 },
+		{ "Diagnostics\r\n", 'D', setDiagnostics, ENTRY_NONE, 0 },
 		{ "Send Beacon\r\n", 'E', sendBeacon, ENTRY_NONE, 0 },
-#if __ENABLE_GPS
-		{ "GPS Echo mode\r\n", 'G', gpsEcho, ENTRY_NONE, 0 },
-#endif
-		{ "LED test\r\n", 'L', ledTest, ENTRY_NONE, 0 },
-#if __MEM_DEBUG
-		{ "Memory Status\r\n", 'M', memStats, ENTRY_NONE, 0 },
-#endif
 		{ "Set Radio Parameters\r\n", 'R', setRadio, ENTRY_NONE, 0 },
 		{ "Set Station Parameters\r\n", 'S', setStation, ENTRY_NONE, 0 },
 		{ "Set clock (HH:MM)\r\n\n", 'T', setParam, ENTRY_TIME, MAX_TIMESIZE },
-		{ "Write Setup Values\r\n", 'W', writeSetup, ENTRY_NONE, 0 },
-		{ "Exit\r\n\n", 'X', exitMenu, ENTRY_NONE, 0 }
+		{ "Write Setup Values to flash\r\n\n", 'W', writeSetup, ENTRY_NONE, 0 }
 };
 
 // radio menu
-#define N_RADIOMENU	8
+#define N_RADIOMENU	10
 struct menuItems_t radioMenu[N_RADIOMENU] = {
 		{ "RF Frequency\r\n", 'A', setParam, ENTRY_FLOAT, MAX_FLDSIZE },
 		{ "Data Rate\r\n", 'B', setParam, ENTRY_FLOAT, MAX_FLDSIZE },
 		{ "Peak Deviation\r\n", 'C', setParam, ENTRY_FLOAT, MAX_FLDSIZE },
 		{ "Channel Filter BW\r\n", 'D', setParam, ENTRY_FLOAT, MAX_FLDSIZE },
-		{ "Output Power (dBm)\r\n", 'E', setParam, ENTRY_NUMERIC, MAX_FLDSIZE },
-		{ "Rx Squelch (dBm)\r\n\n", 'F', setParam, ENTRY_NUMERIC, MAX_FLDSIZE },
-		{ "List Settings\r\n", 'L', printRadSetup, ENTRY_NONE, MAX_FLDSIZE },
-		{ "Return to main menu\r\n\n", 'X', exitMenu, ENTRY_NONE, MAX_FLDSIZE }
+		{ "PA drive mode\r\n", 'E', setParam, ENTRY_NUMERIC, MAX_FLDSIZE },
+		{ "Output Power (dBm)\r\n", 'F', setParam, ENTRY_NUMERIC, MAX_FLDSIZE },
+		{ "Rx Squelch (dBm)\r\n\n", 'G', setParam, ENTRY_NUMERIC, MAX_FLDSIZE },
+		{ "List Settings\r\n", 'L', printRadSetup, ENTRY_NONE, 0 },
+		{ "Apply Settings\r\n", 'P', applySettings, ENTRY_NONE, 0 },
+		{ "Return to main menu\r\n", 'Z', exitMenu, ENTRY_NONE, 0 }
 };
-
-// these need to correspond to the items above
+// validators for radio mmenu
+FIELD_VALIDATOR radioValidators[] = {
+		{ MIN_FREQ, 450000000, &setup_memory.params.radio_setup.lFrequencyBase, uint32_type, 1000000 },
+		{ 9600, 600000, &setup_memory.params.radio_setup.lDatarate, uint32_type, 1000 },
+		{ 12500, 150000, &setup_memory.params.radio_setup.lFreqDev, uint32_type, 1000 },
+		{ 2600, 1600000, &setup_memory.params.radio_setup.lBandwidth, uint32_type, 1000 },
+#if _BOARD_TYPE == NUCLEO_BOARD
+		{ 2, 2, &setup_memory.params.radio_setup.PADrvMode, uint8_type, 1 },
+		{ 0,14, &setup_memory.params.radio_setup.outputPower, uint8_type, 1 },
+#else
+		{ 1, 3, &setup_memory.params.radio_setup.PADrvMode, uint8_type, 1 },
+		{ 0, 20, &setup_memory.params.radio_setup.outputPower, uint8_type, 1 },
+#endif
+		{ -115, 0, &setup_memory.params.radio_setup.rxSquelch, int16_type, 1 },
+};
 
 // station menu
 #if __AX25_COMPATIBILITY
@@ -372,15 +437,41 @@ struct menuItems_t stationMenu[N_STATIONMENU] = {
 		{ "Latitude\r\n", 'C', setParam, ENTRY_FLOAT, MAX_FLOATSIZE },
 		{ "Longitude\r\n", 'D', setParam, ENTRY_FLOAT, MAX_FLOATSIZE },
 		{ "Grid Square\r\n", 'E', setParam, ENTRY_ANYCASE, MAX_CALL },
-		{ "Repeat Mode(Y/N)\r\n", 'F', setParam, ENTRY_UPPERCASE, 1 },
+		{ "Repeat Mode\r\n", 'F', setParam, ENTRY_UPPERCASE, 1 },
 		{ "Beacon Interval\r\n", 'G', setParam, ENTRY_NUMERIC, MAX_FLDSIZE },
 #if __AX25_COMPATIBILITY
-		{ "AX.25 Compatibility Mode(Y/N)\r\n", 'H', setParam, ENTRY_UPPERCASE, 1 },
+		{ "AX.25 Compatibility Mode\r\n", 'H', setParam, ENTRY_UPPERCASE, 1 },
 		{ "AX.25 SSID\r\n\n", 'I', setParam, ENTRY_NUMERIC, MAX_FLDSIZE },
 #endif
 		{ "List Settings\r\n", 'L', printStnSetup, ENTRY_NONE, 0 },
-		{ "Return to main menu\r\n\n", 'X', exitMenu, ENTRY_NONE, 0 }
+		{ "Return to main menu\r\n\n", 'Z', exitMenu, ENTRY_NONE, 0 }
 };
+// validators for station menu
+FIELD_VALIDATOR stationValidators[] = {
+		{ 4, MAX_CALL, &setup_memory.params.setup_data.stnCall, char_type, 0 },
+		{ 1, MAX_DESC, &setup_memory.params.setup_data.Description, char_type, 0 },
+		{ 2, 14, &setup_memory.params.setup_data.latitude, char_type, 0 },
+		{ 2, 14, &setup_memory.params.setup_data.longitude, char_type, 0 },
+		{ 4, 6, &setup_memory.params.setup_data.gridSq, char_type, 0 },
+		{ 0x8, 0, &setup_memory.params.setup_data.flags, yesno_type, 0 },
+		{ 1, 100, &setup_memory.params.setup_data.beaconInt, int16_type, 0 },
+		{ 0x4, 0, &setup_memory.params.setup_data.flags, yesno_type, 0 },
+		{ 0, 15, &setup_memory.params.setup_data.flags, uint4_hi, 0 }
+};
+// diagnostics menu
+#define N_DIAGMENU	8
+struct menuItems_t diagMenu[N_DIAGMENU] = {
+		{ "Dump Frame stats\r\n", 'D', showstats, ENTRY_NONE, 0 },
+		{ "GPS Echo mode\r\n", 'G', gpsEcho, ENTRY_NONE, 0 },
+		{ "LED test\r\n", 'L', ledTest, ENTRY_NONE, 0 },
+		{ "Memory Status\r\n", 'M', memStats, ENTRY_NONE, 0 },
+		{ "Transmit PRBS Sequence\r\n", 'P', prbsMode, ENTRY_NONE, 0 },
+		{ "Transmit CW Mode\r\n", 'T', cwMode, ENTRY_NONE, 0 },
+		{ "Transmit Test Off\r\n", 'X', testOff, ENTRY_NONE, 0 },
+		{ "Return to main menu\r\n\n", 'Z', exitdiagMenu, ENTRY_NONE, 0 }
+};
+
+// these need to correspond to the items above
 
 // menu contents
 struct menuContents_t {
@@ -394,7 +485,8 @@ struct menuContents_t {
 		{ "      IP400 Pi Zero HAT menu\r\n", N_MAINMENU, mainMenu },
 #endif
 		{ "      Radio setup menu\r\n", N_RADIOMENU, radioMenu },
-		{ "      Station Setup  menu\r\n", N_STATIONMENU, stationMenu }
+		{ "      Station Setup menu\r\n", N_STATIONMENU, stationMenu },
+		{ "      Diagnostics menu\r\n", N_DIAGMENU, diagMenu },
 };
 
 // menu (main) task
@@ -444,9 +536,13 @@ void Menu_Task_Exec(void)
 		return;
 
 	case MENU_SELECTING:
-		if((sel_item=getMenuItem()) == NO_ITEM)
+		sel_item = getMenuItem();
+		if(sel_item == NO_ITEM)
 			return;
-		menuState = MENU_SELECTED;
+		if(sel_item == MENU_REPAINT)
+			menuState = MENU_SHOWING;
+		else
+			menuState = MENU_SELECTED;
 		break;
 
 	case MENU_SELECTED:
@@ -527,6 +623,9 @@ int getMenuItem(void)
 
 	for(int i=0;i<nBytesinBuff;i++)		{
 		if((c=databuffer_get(0)) != BUFFER_NO_DATA)	{
+
+			if(c == KEY_EOL)
+				return MENU_REPAINT;
 
 			// translate and echo
 			c = islower(c) ? toupper(c) : c;
@@ -698,7 +797,9 @@ uint8_t getEntry(int activeMenu, int item)
 		entryState = ENTERING;
 		m=menuContents[activeMenu].menus;
 		m += item;
-		USART_Print_string("%s->", m->menuLine);
+		USART_Print_string("%s", m->menuLine);
+		printValidator(activeMenu, item);
+		USART_Print_string("->", m->menuLine);
 		return RET_MORE;
 
 	case ENTERING:
@@ -717,53 +818,62 @@ uint8_t getEntry(int activeMenu, int item)
 	return RET_MORE;
 }
 
-// data types we are updating
-enum {
-	uint4_lo,		// uint4 lsb
-	uint4_hi,		// uint4 msb
-	uint8_type,		// uint8 field
-	int16_type,		// int16 field
-	uint32_type,	// uint32 field
-	float_type,		// floating point
-	char_type,		// character type
-	yesno_type		// yes/no type
-};
+// print a validator
+void printValidator(int activeMenu, int item)
+{
+	int flMinW, flMaxW;
+	int flMinF, flMaxF;
+	uint32_t scalar;
 
-// struct to hold validation values
-typedef struct field_validator_t {
-	int			MinVal;				// minimum value or string length
-	int			MaxVal;				// maximum value or string length
-	void    	*setupVal;			// pointer to setup value
-	int			type;				// type of entry
-	uint32_t	scalar;				// scalar to convert to decimal
-} FIELD_VALIDATOR;
+	switch(activeMenu)	{
 
-// validators for radio mmenu
-FIELD_VALIDATOR radioValidators[] = {
-		{ MIN_FREQ, 450000000, &setup_memory.params.radio_setup.lFrequencyBase, uint32_type, 1000000 },
-		{ 9600, 600000, &setup_memory.params.radio_setup.lDatarate, uint32_type, 1000 },
-		{ 12500, 150000, &setup_memory.params.radio_setup.lFreqDev, uint32_type, 1000 },
-		{ 2600, 1600000, &setup_memory.params.radio_setup.lBandwidth, uint32_type, 1000 },
-		{ 0, 20, &setup_memory.params.radio_setup.outputPower, uint8_type, 1 },
-		{ -115, 0, &setup_memory.params.radio_setup.rxSquelch, int16_type, 1 },
-};
+	// only item is the clock
+	case MAIN_MENU:
+		USART_Print_string("(HH:MM:DD)");
+		break;
 
-FIELD_VALIDATOR stationValidators[] = {
-		{ 4, MAX_CALL, &setup_memory.params.setup_data.stnCall, char_type, 0 },
-		{ 1, MAX_DESC, &setup_memory.params.setup_data.Description, char_type, 0 },
-		{ 2, 14, &setup_memory.params.setup_data.latitude, char_type, 0 },
-		{ 2, 14, &setup_memory.params.setup_data.longitude, char_type, 0 },
-		{ 4, 6, &setup_memory.params.setup_data.gridSq, char_type, 0 },
-		{ 0x8, 0, &setup_memory.params.setup_data.flags, yesno_type, 0 },
-		{ 1, 100, &setup_memory.params.setup_data.beaconInt, int16_type, 0 },
-		{ 0x4, 0, &setup_memory.params.setup_data.flags, yesno_type, 0 },
-		{ 0, 15, &setup_memory.params.setup_data.flags, uint4_hi, 0 }
-};
+	// these are basically all numeric
+	case RADIO_MENU:
+		scalar = radioValidators[item].scalar;
+		if(scalar > 1)	{
+			flMinW = radioValidators[item].MinVal/scalar;
+			flMaxW = radioValidators[item].MaxVal/scalar;
+			flMinF = radioValidators[item].MinVal % scalar;
+			flMaxF = radioValidators[item].MaxVal % scalar;
+			USART_Print_string("(%d.%03d to %d.%03d)", flMinW, flMinF, flMaxW, flMaxF);
+		} else {
+			USART_Print_string("(%d to %d)", radioValidators[item].MinVal, radioValidators[item].MaxVal);
+		}
+		break;
+
+	// various types
+	case STATION_MENU:
+
+		switch(stationValidators[item].type){
+
+		case yesno_type:
+			USART_Print_string("(Y or N)");
+			break;
+
+		case char_type:
+			USART_Print_string("(%d to %d characters)", stationValidators[item].MinVal, stationValidators[item].MaxVal);
+			break;
+
+		default:
+			USART_Print_string("(%d to %d)", stationValidators[item].MinVal, stationValidators[item].MaxVal);
+			break;
+		}
+		break;
+	}
+}
 
 uint8_t validateEntry(int activeMenu, int item, char *keyBuffer)
 {
 
 	int newValue, min, max;
+
+	if(strlen(keyBuffer) == 0)
+		return RET_DONE;
 
 	//NB: the cases here must jive with the menu items
 	switch(activeMenu)	{
@@ -944,9 +1054,9 @@ void Print_FSM_state(uint8_t state)
 		return;
 	}
 	USART_Print_string("\r\nRadio FSM State: %d: %s\r\n", state, fsm_states[state]);
+	USART_Print_string("Code FSM State: %s\r\n", getSubGState());
 }
 
-#if __MEM_DEBUG
 /*
  * dump memory statistics
  * uses the mallinfo structure
@@ -972,4 +1082,3 @@ void Print_Memory_Stats(void)
 	USART_Print_string("Topmost releasable block->%ld\r\n", memStats.keepcost);
 
 }
-#endif

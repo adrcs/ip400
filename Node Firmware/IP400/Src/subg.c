@@ -54,13 +54,27 @@ typedef enum	{
 		RX_ABORTING,	// stopping Rx
 		TX_READY,		// activated, no data yet
 		TX_SENDING,		// sending a frame
+		TX_TESTSETUP,	// test mode setup
+		TX_TEST,		// test mode on
 		TX_DONE			// done
 } SubGRxTxState;
+// character representations
+char *subGStates[] = {
+		"IDLE",
+		"RX_ACTIVE",
+		"RX_ABORTING",
+		"TX_READY",
+		"TX_SENDING",
+		"TX_TESTSETUP",
+		"TX_TEST",
+		"TX_DONE"
+};
 
 // locals
 uint32_t 			subgIRQStatus;	// interrupt status
 int16_t  			rxSquelch;		// rx squlech
 uint8_t				subGCmd;		// current command
+SubGTestMode		testMode;		// transmit test mode
 
 SubGRxTxState	 	subGState;		// radio state
 FRAME_QUEUE			txQueue;		// transmitter frame queue
@@ -121,6 +135,9 @@ void SubG_Task_init(void)
 	// set comamnd to NOP
 	subGCmd = CMD_NOP;
 
+	// CW mode off
+	testMode = SUBG_TEST_OFF;
+
 	// set Rx threshold
 	STN_PARAMS *params = GetStationParams();
 	rxSquelch = params->radio_setup.rxSquelch;
@@ -154,7 +171,11 @@ SubGFSMState GetFSMState(void)
 	uint32_t fsmState = READ_REG(MR_SUBG_GLOB_STATUS->RADIO_FSM_INFO);
 	return (uint8_t)(fsmState & MR_SUBG_GLOB_STATUS_RADIO_FSM_INFO_RADIO_FSM_STATE_Msk);
 }
-
+// 	get the subg state
+char *getSubGState(void)
+{
+	return subGStates[subGState];
+}
 
 /*
  * queue a frame for transmission by the tx task
@@ -263,6 +284,25 @@ void Buf2IP400(IP400_FRAME *rframe, RAWBUFFER *RxRaw)
 }
 
 /*
+ *  diagnostic modes
+ */
+// set a diagnostic mode
+void setSubgTestMode(SubGTestMode mode)
+{
+	testMode = mode;
+}
+// generate a PRBS sequence X7 + X6 + 1
+void genPRBS(uint8_t *buffer)
+{
+	uint8_t val = 0x02;				// starting value
+	for(int i=0;i<PRBS_FRAME_SIZE;i++)	{
+		uint8_t nxt = (((val >> 6) ^ (val >> 5)) & 1);
+		val = ((val<<1) | nxt) & 0x7f;
+		*buffer++ = val;
+	}
+}
+
+/*
  * main entry for subg task. Pick frames from the transmit queue
  */
 void SubG_Task_exec(void)
@@ -271,6 +311,7 @@ void SubG_Task_exec(void)
 	IP400_FRAME *tFrame;
 	uint8_t actBuffer;
 	int frameLen = 0;
+	uint32_t pointer0Addr, pointer1Addr;
 
 	SubGFSMState fsmState = GetFSMState();
 
@@ -319,8 +360,8 @@ void SubG_Task_exec(void)
 					actBuffer = SUBG_BUFFER_0;
 			else	actBuffer = SUBG_BUFFER_1;
 		} else {
-			// no data: check the transmitter
-			if(quehasData(&txQueue))	{
+			// no data: check the transmitter for data or diag mode
+			if(quehasData(&txQueue) || testMode)	{
 				subGCmd = CMD_SABORT;
 				__HAL_MRSUBG_STROBE_CMD(subGCmd);
 				subGState = RX_ABORTING;
@@ -361,9 +402,28 @@ void SubG_Task_exec(void)
 
 		SetLEDMode(BICOLOR_OFF);
 
-		if(fsmState == FSM_IDLE)
-			subGState = TX_READY;
+		if(fsmState == FSM_IDLE)	{
+			// initiate diag mode
+			if(testMode)	{
+				if(testMode == SUBG_TEST_PRBS)	{
+					genPRBS(Buffer0);
+					genPRBS(Buffer1);
+				}
 
+				pointer0Addr = (uint32_t)&Buffer0;
+				pointer1Addr = (uint32_t)&Buffer1;
+
+				MODIFY_REG_FIELD(MR_SUBG_GLOB_DYNAMIC->PCKTLEN_CONFIG, MR_SUBG_GLOB_DYNAMIC_PCKTLEN_CONFIG_PCKTLEN, 0);
+				__HAL_MRSUBG_SET_DATABUFFER0_POINTER(pointer0Addr);
+				__HAL_MRSUBG_SET_DATABUFFER1_POINTER(pointer1Addr);
+				__HAL_MRSUBG_SET_DATABUFFER_SIZE(PRBS_FRAME_SIZE);
+				__HAL_MRSUBG_SET_TX_MODE(TX_DIRECT_BUFFERS);
+				__HAL_MRSUBG_STROBE_CMD(CMD_LOCKTX);
+				subGState = TX_TESTSETUP;
+			}
+			else
+				subGState = TX_READY;
+		}
 		break;
 
 	// ready to start the tx
@@ -379,6 +439,8 @@ void SubG_Task_exec(void)
 		}
 
 		// Send buffer zero first
+		HAL_MRSubG_SetModulation(setup_memory.params.radio_setup.xModulationSelect, 0);
+		MODIFY_REG_FIELD(MR_SUBG_GLOB_DYNAMIC->PCKTLEN_CONFIG, MR_SUBG_GLOB_DYNAMIC_PCKTLEN_CONFIG_PCKTLEN, MAX_FRAME_SIZE);
 		activeTxBuffer = SUBG_BUFFER_0;
 		__HAL_MRSUBG_SET_DATABUFFER0_POINTER((uint32_t)subgBufState[activeTxBuffer].addr);
 		__HAL_MRSUBG_SET_DATABUFFER_SIZE(MAX_FRAME_SIZE);
@@ -416,14 +478,42 @@ void SubG_Task_exec(void)
 		}
 		break;
 
-	// done
+	/*
+	 * Tx diagnostic modes
+	 */
+	// setup tx on mode
+	case TX_TESTSETUP:
+		fsmState = GetFSMState();
+		if(fsmState < FSM_LOCKONTX)
+			return;
+
+		if(testMode == SUBG_TEST_CW)
+			HAL_MRSubG_SetModulation(MOD_CW, 0);
+
+		// wait until ready to transmit..
+		if(fsmState == FSM_LOCKONTX)	{
+			subGCmd = CMD_TX;
+			__HAL_MRSUBG_STROBE_CMD(subGCmd);
+			SetLEDMode(TX_LED_ON);
+		} else return;						// not in correct state yet
+
+		subGState = TX_TEST;
+		break;
+
+	// wait state until turned off
+	case TX_TEST:
+		if(!testMode)
+			subGState = TX_DONE;
+		break;
+
+	// all transmit mode exit
 	case TX_DONE:
 		subGCmd = CMD_SABORT;
 		__HAL_MRSUBG_STROBE_CMD(subGCmd);
 		SetLEDMode(TX_LED_OFF);
 		subGState = IDLE;
-
 		break;
+
 	}
 }
 

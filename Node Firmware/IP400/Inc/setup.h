@@ -125,6 +125,7 @@ extern CRC_HandleTypeDef hcrc;
 #endif
 
 // links in
+void RadioSetup(void);						// radio setup
 void printStationSetup(void);				// print setup struct
 void printRadioSetup(void);					// print radio setup
 char *GetMyCall(void);						// return the station's callsign

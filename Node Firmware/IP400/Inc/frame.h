@@ -129,6 +129,11 @@ typedef struct ip400_frame_t	{
 #define	MIN_FRAME_SIZE		sizeof(IP400_FRAME) + PAYLOAD_MIN + N_FEC
 #define MAX_FRAME_SIZE		MIN_FRAME_SIZE - PAYLOAD_MIN + PAYLOAD_MAX
 
+// PRBS defines
+#define	PRBS_LEN			127
+#define	PRBS_REPETITION		8
+#define	PRBS_FRAME_SIZE		(PRBS_LEN*PRBS_REPETITION)
+
 // packet coding (type)
 typedef enum {
 		UTF8_TEXT_PACKET=0,		// Text packet (chat application)
@@ -164,6 +169,12 @@ enum {
 		H264_480_360_12,		// H.264: 480x360, 12FPS
 		H264_640_480_6			// H.264: 640x480, 6FPS
 };
+// tx test modes
+typedef enum {
+	SUBG_TEST_OFF=0,			// test mode off
+	SUBG_TEST_CW,				// CW mode
+	SUBG_TEST_PRBS				// send PRBS
+} SubGTestMode;
 
 // callsign fields
 enum	{
@@ -206,13 +217,16 @@ BOOL EnqueChatFrame(void *Frame);				// queue a chat frame
 FRAME_STATS *GetFrameStats(void);				// return the frame stats
 uint32_t GetRadioStatus(void);					// get the radio status
 SubGFSMState GetFSMState(void);					// get FSM state
+char *getSubGState(void);						// get subg state
 //
 uint8_t getFrameStatus(void);					// get the frame status
 BOOL FrameisMine(IP400_FRAME *frame);
 void RepeatFrame(IP400_FRAME *frame);
 void ProcessRxFrame(IP400_FRAME *rframe, int rawLength);
 void QueueTxFrame(IP400_FRAME *txframe);
-
+//
+void setSubgTestMode(SubGTestMode mode);
+//
 // lookup a frame in the mesh table
 int getNMeshEntries(char *dest_call, int len);
 IP400_MAC *getMeshEntry(char *dest_call, int len);

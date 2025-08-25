@@ -38,8 +38,8 @@
 static FLASH_EraseInitTypeDef EraseInitStruct;
 
 // current build number
-char *revID = "$Revision: 37 $";
-char *dateID = "$Date: 2025-06-30 20:36:27 -0600 (Mon, 30 Jun 2025) $";
+char *revID = "$Revision: 40 $";
+char *dateID = "$Date: 2025-08-25 09:48:19 -0600 (Mon, 25 Aug 2025) $";
 
 /*
  * Default setup parameters
@@ -60,12 +60,17 @@ SETUP_MEMORY def_params = {
 		.params.radio_setup.lFreqDev = 25000,
 		.params.radio_setup.lBandwidth = 200000,
 		.params.radio_setup.dsssExp = 0,
+#if _BOARD_TYPE == NUCLEO_BOARD
 		.params.radio_setup.outputPower = 14,
 		.params.radio_setup.PADrvMode = PA_DRV_TX_HP,
+#else
+		.params.radio_setup.outputPower = 20,
+		.params.radio_setup.PADrvMode = PA_DRV_TX_TX_HP,
+#endif
 		.params.radio_setup.rxSquelch = -95,
 		//
-		.params.FirmwareVerMajor = 1,			// current rev is 1.3
-		.params.FirmwareVerMinor = 3,
+		.params.FirmwareVerMajor = 1,			// current rev is 1.4
+		.params.FirmwareVerMinor = 4,
 		.params.Magic = SETUP_MAGIC,
 		.params.SetupCRC = 0
 };
@@ -93,6 +98,7 @@ char *modTypes[] = {
 
 // PA modes
 char *paModes[] = {
+		"?Undefined",
 		"TX 10dBm Max",
 		"HP 14dBm Max",
 		"TX_HP 20dBm Max"
@@ -120,20 +126,41 @@ BOOL CompareToMyCall(char *call)
 }
 
 /*
+ * Setup radio from params
+ */
+void RadioSetup(void)
+{
+	SMRSubGConfig MRSUBG_RadioInitStruct;
+
+	MRSUBG_RadioInitStruct.lFrequencyBase = setup_memory.params.radio_setup.lFrequencyBase;
+	MRSUBG_RadioInitStruct.xModulationSelect = setup_memory.params.radio_setup.xModulationSelect;
+	MRSUBG_RadioInitStruct.lDatarate = setup_memory.params.radio_setup.lDatarate;
+	MRSUBG_RadioInitStruct.lFreqDev = setup_memory.params.radio_setup.lFreqDev;
+	MRSUBG_RadioInitStruct.lBandwidth = setup_memory.params.radio_setup.lBandwidth;
+	MRSUBG_RadioInitStruct.dsssExp = setup_memory.params.radio_setup.dsssExp;
+	MRSUBG_RadioInitStruct.outputPower = setup_memory.params.radio_setup.outputPower;
+	MRSUBG_RadioInitStruct.PADrvMode = setup_memory.params.radio_setup.PADrvMode;
+	HAL_MRSubG_Init(&MRSUBG_RadioInitStruct);
+}
+
+/*
  * Print the setup struct
  */
 void printStationSetup(void)
 {
 	// station callsigns first
 	USART_Print_string("Station Callsign->%s\r\n", setup_memory.params.setup_data.stnCall);
+
+#if	__AX25_COMPATIBILITY
 	if(setup_memory.params.setup_data.flags.AX25)		{
 		USART_Print_string("AX.25 Address SSID: %s-%d\r\n", setup_memory.params.setup_data.stnCall,
 				setup_memory.params.setup_data.flags.SSID);
 	} else	{
 		USART_Print_string("AX.25 Compatibility Not Enabled\r\n");
 	}
-	USART_Print_string("Description->%s\r\n\n", setup_memory.params.setup_data.Description);
+#endif
 
+	USART_Print_string("Description->%s\r\n\n", setup_memory.params.setup_data.Description);
 	// station location
 	USART_Print_string("Latitude->%s\r\n", setup_memory.params.setup_data.latitude);
 	USART_Print_string("Longitude->%s\r\n", setup_memory.params.setup_data.longitude);
@@ -143,8 +170,10 @@ void printStationSetup(void)
 		USART_Print_string("FSK ");
 	if(setup_memory.params.setup_data.flags.ofdm)
 		USART_Print_string("OFDM ");
+#if	__AX25_COMPATIBILITY
 	if(setup_memory.params.setup_data.flags.AX25)
 		USART_Print_string("AX.25 ");
+#endif
 	if(setup_memory.params.setup_data.flags.repeat)
 		USART_Print_string("\r\nRepeat mode on\r\n");
 	else
@@ -306,7 +335,9 @@ HAL_StatusTypeDef WriteSetup(void)
 	    if ((status=HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, memAddr, data32)) != HAL_OK)
 	    	return status;
 	    memAddr += sizeof(uint32_t);
+#if __FLASH_TEST
 		USART_Print_string("%02d..", nwords);
+#endif
 	}
 	return status;
 }
