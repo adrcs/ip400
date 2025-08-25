@@ -1,5 +1,5 @@
 # Node Firmware
-This directory contains the code sources. The current source code is at Rev level 1.3.
+This directory contains the code sources. The current source code is at Rev level 1.4.
 
 The two zip files are the Cube IDE projects, which can be imported directly. See the .pdf instructions for 
 more details. The IP400 code is common to both, and can be compiled for the two platforms.
