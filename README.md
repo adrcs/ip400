@@ -7,6 +7,6 @@ uploaded using the STM flash utility.
 The Raspberry Pi code is now available on the disk image, which can be downloaded from the project website, ip400.adrcs.org, 
 from the 'Getting Started' link on the hardware page.
 
-The current revision level is 1.3
+The current revision level is 1.4, revision 42, Oct 14th 2025
 
 See the release notes in the 'IP400 Node Software' document.
