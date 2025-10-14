@@ -16,7 +16,7 @@
 				    Copyright (c) Alberta Digital Radio Communications Society
 				    All rights reserved.
 
-	Revision History: Revised to Rev 34
+	Revision History: Revised to Rev 34, fixed minor bugs oct 14th
 
 ---------------------------------------------------------------------------*/
 #include <stdlib.h>
@@ -38,8 +38,8 @@
 static FLASH_EraseInitTypeDef EraseInitStruct;
 
 // current build number
-char *revID = "$Revision: 40 $";
-char *dateID = "$Date: 2025-08-25 09:48:19 -0600 (Mon, 25 Aug 2025) $";
+char *revID = "$Revision: 42 $";
+char *dateID = "$Date: 2025-10-14 11:14:41 -0600 (Tue, 14 Oct 2025) $";
 
 /*
  * Default setup parameters

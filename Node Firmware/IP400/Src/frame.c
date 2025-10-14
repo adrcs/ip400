@@ -229,6 +229,7 @@ void SendSPIFrame(void *spi, uint8_t *payload, int len)
 	spiFrame->seqNum = nextSeq++;
 
 	memcpy(spiFrame->buf, payload, len);
+	spiFrame->length = len;                  // Previous error
 
 	QueueTxFrame(spiFrame);
 

@@ -297,7 +297,7 @@ int findCall(IP400_MAC *call, int start)
 	for(int i=start;i<nMeshEntries;i++)	{
 		if((MeshTable[i].macAddr.callbytes.encoded == call->callbytes.encoded)
 		    && ipCompare(MeshTable[i].macAddr.vpnBytes.encvpn, call->vpnBytes.encvpn)
-			&& (MeshTable[i].status == MESHTBL_VALID))
+			&& ((MeshTable[i].status == MESHTBL_VALID) || (MeshTable[i].status == MESHTBL_LOST)))
 			return i;
 	}
 	return ENTRY_NOTFOUND;

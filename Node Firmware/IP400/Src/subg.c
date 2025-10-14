@@ -149,7 +149,11 @@ void SubG_Task_init(void)
 		|	MR_SUBG_GLOB_DYNAMIC_RFSEQ_IRQ_ENABLE_RX_TIMEOUT_E
 		|	MR_SUBG_GLOB_DYNAMIC_RFSEQ_IRQ_ENABLE_RX_CRC_ERROR_E
 	);
+#if __CUBEIDE_19
+    HAL_NVIC_EnableIRQ(MRSUBG_IRQn);
+#else
     HAL_NVIC_EnableIRQ(MR_SUBG_IRQn);
+#endif
 }
 
 /*
@@ -187,41 +191,44 @@ void QueueTxFrame(IP400_FRAME *txframe)
 
 /*
  * IP400 to buffer handlers
+ * By Ed Tink, VA3EJT
  */
 int IP4002Buf(IP400_FRAME *tFrame, RAWBUFFER *rawFrame)
 {
-	int frameLen = tFrame->length;
+	RAWBUFFER *cpyDest = rawFrame;
 
 	/*
 	 * Build the raw frame bytes: see IP400_FRAME struct
 	 */
 	// Source call + port (6 bytes)
-	memcpy(rawFrame, (uint8_t *)&tFrame->source, IP_400_CALL_SIZE);
-	rawFrame += IP_400_CALL_SIZE;
+	memcpy(cpyDest, (uint8_t *)&tFrame->source, IP_400_CALL_SIZE);
+	cpyDest += IP_400_CALL_SIZE;
 	// Dest call + port (6 bytes)
-	memcpy(rawFrame, (uint8_t *)&tFrame->dest, IP_400_CALL_SIZE);
-	rawFrame += IP_400_CALL_SIZE;
+	memcpy(cpyDest, (uint8_t *)&tFrame->dest, IP_400_CALL_SIZE);
+	cpyDest += IP_400_CALL_SIZE;
 	// flag byte (2 byte)
-	memcpy(rawFrame, (uint8_t *)&tFrame->flagfld, IP_400_FLAG_SIZE);
-	rawFrame += IP_400_FLAG_SIZE;
+	memcpy(cpyDest, (uint8_t *)&tFrame->flagfld, IP_400_FLAG_SIZE);
+	cpyDest += IP_400_FLAG_SIZE;
 	// frame sequence number (4 bytes)
-	memcpy(rawFrame, (uint32_t *)&tFrame->seqNum, sizeof(uint32_t));
-	rawFrame += sizeof(uint32_t);
+	memcpy(cpyDest, (uint32_t *)&tFrame->seqNum, sizeof(uint32_t));
+	cpyDest += sizeof(uint32_t);
 	// frame length (2 bytes)
-	memcpy(rawFrame, (uint8_t *)&tFrame->length, sizeof(uint16_t));
-	rawFrame += IP_400_LEN_SIZE;
+	memcpy(cpyDest, (uint8_t *)&tFrame->length, sizeof(uint16_t));
+	cpyDest += IP_400_LEN_SIZE;
 
 	// add in the hop table
 	if(tFrame->flagfld.flags.hoptable)	{
 		uint16_t hopLen = (uint16_t)(tFrame->flagfld.flags.hop_count) * sizeof(HOPTABLE);
-		memcpy(rawFrame, (uint8_t *)(tFrame->hopTable), hopLen);
-		rawFrame += hopLen;
+		memcpy(cpyDest, (uint8_t *)(tFrame->hopTable), hopLen);
+		cpyDest += hopLen;
 		free(tFrame->hopTable);
 	}
 
 	// and now the data...
-	if((tFrame->buf != NULL) && (tFrame->length != 0))
-		memcpy(rawFrame, tFrame->buf, tFrame->length);
+	if((tFrame->buf != NULL) && (tFrame->length != 0)) {
+		memcpy(cpyDest, tFrame->buf, tFrame->length);
+		cpyDest += tFrame->length;
+	}
 
 	// free the allocations in the reverse order...
 	if(tFrame->buf != NULL)
@@ -230,7 +237,7 @@ int IP4002Buf(IP400_FRAME *tFrame, RAWBUFFER *rawFrame)
 	free(tFrame);
 
 	// ensure packet length is a multiple of 4 bytes
-	int pktLen = (rawFrame - rawFrame) + frameLen;
+	int pktLen = cpyDest - rawFrame;
 	pktLen += (pktLen % 4);
 
 	return pktLen;

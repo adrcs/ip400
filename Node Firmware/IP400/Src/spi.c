@@ -327,9 +327,9 @@ void SPI_Task_Exec(void)
 		if(!isIP400Frame(spiRxBuffer.spiData.hdr.eye))
 			break;
 
-		rxSegLen = (spiRxBuffer.spiData.hdr.length_hi << 8) + spiRxBuffer.spiData.hdr.length_lo;
+		rxSegLen = ((uint16_t)spiRxBuffer.spiData.hdr.length_hi << 8) + (uint16_t)spiRxBuffer.spiData.hdr.length_lo;
 		if(rstat != SINGLE_FRAME)	{
-			prxData =  rxFrameBuffer + (spiRxBuffer.spiData.hdr.offset_hi << 8) + spiRxBuffer.spiData.hdr.offset_lo;
+			prxData =  rxFrameBuffer + ((uint16_t)spiRxBuffer.spiData.hdr.offset_hi << 8) + (uint16_t)spiRxBuffer.spiData.hdr.offset_lo;
 			memcpy(prxData, spiRxBuffer.spiData.buffer, rxSegLen);
 			SPIRxState = SPIRXFRAG;
 		} else {
@@ -341,7 +341,7 @@ void SPI_Task_Exec(void)
 		uint8_t fragStat = spiRxBuffer.spiData.hdr.status;
 		uint16_t offset = (spiTxBuffer.spiData.hdr.offset_hi << 8) + spiTxBuffer.spiData.hdr.offset_lo;
 		prxData = rxFrameBuffer + offset;
-		rxSegLen = (spiRxBuffer.spiData.hdr.length_hi << 8) + spiRxBuffer.spiData.hdr.length_lo;
+		rxSegLen = ((uint16_t)spiRxBuffer.spiData.hdr.length_hi << 8) + (uint16_t) spiRxBuffer.spiData.hdr.length_lo;
 		memcpy(prxData, spiRxBuffer.spiData.buffer, rxSegLen);
 
 		if(fragStat == LAST_FRAGMENT)	{
