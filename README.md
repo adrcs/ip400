@@ -1,12 +1,3 @@
-Welcome to the IP400 project. 
+Welcome to the reboot of the IP400 project. 
 
-The directories here have been restructured. The Node Firmware directory contains the hardware abstraction for several platforms, 
-and the IP400 directory contains source code that is common to all node types. There are precompiled binary files that can be
-uploaded using the STM flash utility.
-
-The Raspberry Pi code is now available on the disk image, which can be downloaded from the project website, ip400.adrcs.org, 
-from the 'Getting Started' link on the hardware page.
-
-The current revision level is 1.4, revision 42, Oct 14th 2025
-
-See the release notes in the 'IP400 Node Software' document.
+The UFP V2.0 for the mini-node will be released on Monday, August 10th. Please re-visit here for an update then.
